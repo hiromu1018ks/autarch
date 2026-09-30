@@ -1,3 +1,6 @@
+import pytest
+import urllib.error
+
 import decide
 
 
@@ -372,3 +375,94 @@ class TestBuildRequest:
         import json as json_module
 
         json_module.dumps(payload, ensure_ascii=False)
+
+
+class FakeResponse:
+    def __init__(self, body=b"{}", status=200):
+        self._body = body
+        self.status = status
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+class TestSendRequest:
+    def _payload(self):
+        return {"model": "m", "state": {}, "questions": {}}
+
+    def test_posts_to_systemone_with_bearer(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            captured["auth"] = request.get_header("Authorization")
+            captured["content_type"] = request.get_header("Content-type")
+            captured["timeout"] = timeout
+            captured["body"] = request.data
+            return FakeResponse(b'{"ok": true}', 200)
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key-123")
+        status, body = decide.send_request(self._payload(), "https://api.example", 12.5)
+
+        assert status == 200
+        assert body == b'{"ok": true}'
+        assert captured["url"] == "https://api.example/v1/systemone"
+        assert captured["auth"] == "Bearer test-key-123"
+        assert captured["content_type"] == "application/json"
+        assert captured["timeout"] == 12.5
+        import json as json_module
+
+        assert json_module.loads(captured["body"]) == self._payload()
+
+    def test_trailing_slash_endpoint_normalized(self, monkeypatch):
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured["url"] = request.full_url
+            return FakeResponse(b"{}", 200)
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+        decide.send_request(self._payload(), "https://api.example/", 5)
+        assert captured["url"] == "https://api.example/v1/systemone"
+
+    def test_http_error_returns_status(self, monkeypatch):
+        def fake_urlopen(request, timeout=None):
+            raise urllib.error.HTTPError(
+                request.full_url, 429, "Too Many Requests", None, None
+            )
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+        status, body = decide.send_request(self._payload(), "https://api.example", 5)
+        assert status == 429
+        assert body == b""
+
+    def test_timeout_propagates_as_oserror(self, monkeypatch):
+        def fake_urlopen(request, timeout=None):
+            raise TimeoutError("timed out")
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+        with pytest.raises(OSError):
+            decide.send_request(self._payload(), "https://api.example", 5)
+
+    def test_urlerror_propagates(self, monkeypatch):
+        def fake_urlopen(request, timeout=None):
+            raise urllib.error.URLError("connection refused")
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", fake_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+        with pytest.raises(OSError):
+            decide.send_request(self._payload(), "https://api.example", 5)
+
+
+def test_provider_error_is_exception():
+    assert issubclass(decide.ProviderError, Exception)

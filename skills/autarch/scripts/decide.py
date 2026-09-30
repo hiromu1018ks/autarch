@@ -6,7 +6,11 @@ and returns a deterministic resolution. Domain-agnostic by design: this
 module knows about decisions, not about any particular field.
 """
 
+import json
+import os
 import re
+import urllib.error
+import urllib.request
 
 REDACTED = "[REDACTED]"
 
@@ -58,6 +62,33 @@ DEFAULT_HUMAN_PREFERENCE = 0.70
 DEFAULT_TIMEOUT = 30
 
 QUESTION_LOG_LIMIT = 500
+
+
+class ProviderError(Exception):
+    """Raised when the evaluation provider cannot deliver a usable response."""
+
+
+def send_request(payload: dict, endpoint: str, timeout: float) -> tuple[int, bytes]:
+    """POST the payload to the SystemOne endpoint.
+
+    Returns (http_status, body). HTTP error statuses come back as
+    (error.code, b""); transport failures raise OSError subclasses.
+    """
+    url = endpoint.rstrip("/") + "/v1/systemone"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {os.environ.get('TYPESAFE_API_KEY', '')}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, response.read()
+    except urllib.error.HTTPError as error:
+        return error.code, b""
 
 
 def _normalize_key(key: str) -> str:
