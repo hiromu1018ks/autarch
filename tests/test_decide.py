@@ -1008,6 +1008,16 @@ class TestMain:
         assert captured.out == ""
         assert "not valid JSON" in captured.err
 
+    def test_non_finite_constant_exits_2(self, tmp_path, capsys):
+        state_file = tmp_path / "state.json"
+        state_file.write_text(
+            '{"goal": "g", "question": "q", "weight": NaN}', encoding="utf-8"
+        )
+        assert decide.main([f"--state-file={state_file}"]) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "not valid JSON" in captured.err
+
     def test_missing_required_argument_exits_2(self, capsys):
         with pytest.raises(SystemExit) as excinfo:
             decide.main([])

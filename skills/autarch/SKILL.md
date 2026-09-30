@@ -119,6 +119,7 @@ Run the engine from this skill's directory (`scripts/decide.py` sits next
 to this SKILL.md):
 
 ```bash
+SKILL_DIR="$(cd "$(dirname "<path to this SKILL.md>")" && pwd)"
 python3 "$SKILL_DIR/scripts/decide.py" --state-file "$STATE_FILE"
 ```
 

@@ -549,6 +549,10 @@ def _resolution_output(
     return output
 
 
+def _reject_json_constant(name: str):
+    raise ValueError(f"non-finite constant {name} is not allowed")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="decide.py",
@@ -575,10 +579,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
     try:
-        state = json.loads(raw_state)
-    except json.JSONDecodeError as error:
+        state = json.loads(raw_state, parse_constant=_reject_json_constant)
+    except ValueError as error:
         print(
-            f"error: state file is not valid JSON: {error.msg}", file=sys.stderr
+            f"error: state file is not valid JSON: {error}", file=sys.stderr
         )
         return 2
 
