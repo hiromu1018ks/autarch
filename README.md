@@ -45,16 +45,23 @@ Note: Choice `probabilities` are a distribution over alternatives (they sum to ~
 Requirements: Python 3.10+, [Claude Code](https://claude.com/claude-code), and a TypeSafe AI API key.
 
 ```bash
-# 1. Clone anywhere
-git clone https://github.com/hiromu1018ks/autarch.git
+# 1. Install the skill via the skills CLI (auto-detects your agent)
+npx skills add hiromu1018ks/autarch
 
-# 2. Link the skill so Claude Code finds it in every project
-mkdir -p ~/.claude/skills
-ln -s /path/to/autarch/skills/autarch ~/.claude/skills/autarch
-
-# 3. Add your API key (get one at the TypeSafe AI console)
+# 2. Add your API key (get one at the TypeSafe AI console)
 echo 'export TYPESAFE_API_KEY="your-key"' >> ~/.bashrc
 ```
+
+<details>
+<summary>Manual install (clone + symlink)</summary>
+
+```bash
+git clone https://github.com/hiromu1018ks/autarch.git
+mkdir -p ~/.claude/skills
+ln -s /path/to/autarch/skills/autarch ~/.claude/skills/autarch
+```
+
+</details>
 
 Then, in any Claude Code session, when the agent asks a question you want to delegate:
 

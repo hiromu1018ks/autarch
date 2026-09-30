@@ -47,16 +47,23 @@ Agent:  "了解。SQLiteで実装を続ける。"
 要件: Python 3.10+、[Claude Code](https://claude.com/claude-code)、TypeSafe AI の API キー。
 
 ```bash
-# 1. どこかに clone
-git clone https://github.com/hiromu1018ks/autarch.git
+# 1. skills CLI でインストール（エージェントを自動検出）
+npx skills add hiromu1018ks/autarch
 
-# 2. スキルをリンクして、すべてのプロジェクトで Claude Code が認識するようにする
-mkdir -p ~/.claude/skills
-ln -s /path/to/autarch/skills/autarch ~/.claude/skills/autarch
-
-# 3. API キーを追加（TypeSafe AI コンソールで取得）
+# 2. API キーを追加（TypeSafe AI コンソールで取得）
 echo 'export TYPESAFE_API_KEY="your-key"' >> ~/.bashrc
 ```
+
+<details>
+<summary>手動インストール（clone + symlink）</summary>
+
+```bash
+git clone https://github.com/hiromu1018ks/autarch.git
+mkdir -p ~/.claude/skills
+ln -s /path/to/autarch/skills/autarch ~/.claude/skills/autarch
+```
+
+</details>
 
 あとは Claude Code セッションの中で、委譲したい質問が出たら:
 
