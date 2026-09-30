@@ -113,3 +113,94 @@ def sanitize_text(text: str, limit: int = QUESTION_LOG_LIMIT) -> str:
     """Redact secret patterns from free text and cap its length."""
     redacted, _ = _redact_string(text)
     return redacted[:limit]
+
+
+def _is_number(value) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _validate_id(value, errors: list[str], label: str) -> None:
+    if not isinstance(value, str) or not value:
+        errors.append(f"{label}: id must be a non-empty string")
+        return
+    if not ID_PATTERN.match(value):
+        errors.append(f"{label}: id does not match the required pattern")
+    if "__" in value:
+        errors.append(f"{label}: id must not contain '__'")
+
+
+def validate_state(state) -> list[str]:
+    """Validate a decision state. Returns a list of violations (empty = valid)."""
+    errors: list[str] = []
+    if not isinstance(state, dict):
+        return ["state must be a JSON object"]
+
+    for field in ("goal", "question"):
+        value = state.get(field)
+        if not isinstance(value, str) or not value.strip():
+            errors.append(f"{field} must be a non-empty string")
+
+    alternatives = state.get("alternatives")
+    if not isinstance(alternatives, list):
+        errors.append("alternatives must be an array")
+        alternatives = []
+    if not 2 <= len(alternatives) <= 5:
+        errors.append(
+            f"alternatives must contain 2 to 5 items (found {len(alternatives)})"
+        )
+
+    seen_ids: set[str] = set()
+    for index, alternative in enumerate(alternatives):
+        label = f"alternatives[{index}]"
+        if not isinstance(alternative, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        option_id = alternative.get("id")
+        _validate_id(option_id, errors, label)
+        if isinstance(option_id, str) and option_id:
+            if option_id in seen_ids:
+                errors.append(f"{label}: duplicate id")
+            seen_ids.add(option_id)
+        for field in ("name", "description"):
+            value = alternative.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{label}: {field} must be a non-empty string")
+
+    criteria = state.get("criteria")
+    if criteria is not None:
+        if not isinstance(criteria, list):
+            errors.append("criteria must be an array")
+            criteria = []
+        if len(criteria) > 8:
+            errors.append(
+                f"criteria must contain at most 8 items (found {len(criteria)})"
+            )
+        seen_criteria: set[str] = set()
+        for index, criterion in enumerate(criteria):
+            label = f"criteria[{index}]"
+            if not isinstance(criterion, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            criterion_id = criterion.get("id")
+            _validate_id(criterion_id, errors, label)
+            if isinstance(criterion_id, str) and criterion_id:
+                if criterion_id in seen_criteria:
+                    errors.append(f"{label}: duplicate id")
+                seen_criteria.add(criterion_id)
+            name = criterion.get("name")
+            if not isinstance(name, str) or not name.strip():
+                errors.append(f"{label}: name must be a non-empty string")
+            weight = criterion.get("weight", 1.0)
+            if not _is_number(weight) or weight < 0:
+                errors.append(f"{label}: weight must be a number >= 0")
+            rubric = criterion.get("rubric")
+            if not isinstance(rubric, list) or len(rubric) < 2:
+                errors.append(
+                    f"{label}: rubric must be an array with at least 2 levels"
+                )
+            elif not all(
+                isinstance(level, str) and level.strip() for level in rubric
+            ):
+                errors.append(f"{label}: rubric levels must be non-empty strings")
+
+    return errors

@@ -145,3 +145,149 @@ class TestSanitizeText:
     def test_clean_text_untouched_up_to_limit(self):
         text = "plain question"
         assert decide.sanitize_text(text) == "plain question"
+
+
+def _valid_state():
+    return {
+        "goal": "Choose the storage strategy",
+        "question": "Which storage option best fits the project?",
+        "known_constraints": ["local only"],
+        "environment": {"os": "linux"},
+        "evidence": ["single user"],
+        "alternatives": [
+            {
+                "id": "option_a",
+                "name": "Option A",
+                "description": "First candidate.",
+                "advantages": ["simple"],
+                "disadvantages": ["limited"],
+                "assumptions": [],
+            },
+            {
+                "id": "option_b",
+                "name": "Option B",
+                "description": "Second candidate.",
+                "advantages": ["scalable"],
+                "disadvantages": ["heavier"],
+                "assumptions": [],
+            },
+        ],
+        "criteria": [
+            {
+                "id": "fit",
+                "name": "Requirement fit",
+                "weight": 1.0,
+                "rubric": ["Poor fit", "Acceptable fit", "Excellent fit"],
+            }
+        ],
+    }
+
+
+class TestValidateState:
+    def test_valid_state_passes(self):
+        assert decide.validate_state(_valid_state()) == []
+
+    def test_state_must_be_object(self):
+        assert decide.validate_state([1, 2]) == ["state must be a JSON object"]
+
+    def test_goal_and_question_required(self):
+        state = _valid_state()
+        state["goal"] = ""
+        del state["question"]
+        errors = decide.validate_state(state)
+        assert any(e.startswith("goal") for e in errors)
+        assert any(e.startswith("question") for e in errors)
+
+    def test_alternative_count_bounds(self):
+        for count, ok in ((0, False), (1, False), (2, True), (5, True), (6, False)):
+            state = _valid_state()
+            base = {"name": "N", "description": "D"}
+            state["alternatives"] = [dict(base, id=f"option_{i}") for i in range(count)]
+            errors = decide.validate_state(state)
+            if ok:
+                assert errors == []
+            else:
+                assert any("2 to 5" in e for e in errors)
+
+    def test_alternatives_must_be_array(self):
+        state = _valid_state()
+        state["alternatives"] = "nope"
+        errors = decide.validate_state(state)
+        assert any("alternatives must be an array" in e for e in errors)
+
+    def test_duplicate_option_ids_rejected(self):
+        state = _valid_state()
+        state["alternatives"][1]["id"] = state["alternatives"][0]["id"]
+        errors = decide.validate_state(state)
+        assert any("duplicate id" in e for e in errors)
+
+    def test_empty_and_invalid_option_ids_rejected(self):
+        state = _valid_state()
+        state["alternatives"][0]["id"] = ""
+        state["alternatives"][1]["id"] = "bad id with spaces"
+        errors = decide.validate_state(state)
+        assert any("id must be a non-empty string" in e for e in errors)
+        assert any("id does not match" in e for e in errors)
+
+    def test_double_underscore_in_id_rejected(self):
+        state = _valid_state()
+        state["alternatives"][0]["id"] = "bad__id"
+        errors = decide.validate_state(state)
+        assert any("must not contain '__'" in e for e in errors)
+
+    def test_name_and_description_required(self):
+        state = _valid_state()
+        del state["alternatives"][0]["name"]
+        state["alternatives"][1]["description"] = ""
+        errors = decide.validate_state(state)
+        assert any("name must be a non-empty string" in e for e in errors)
+        assert any("description must be a non-empty string" in e for e in errors)
+
+    def test_empty_criteria_list_is_valid(self):
+        state = _valid_state()
+        state["criteria"] = []
+        assert decide.validate_state(state) == []
+
+    def test_criteria_omitted_is_valid(self):
+        state = _valid_state()
+        del state["criteria"]
+        assert decide.validate_state(state) == []
+
+    def test_criteria_max_eight(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": f"c{i}", "name": f"C{i}", "rubric": ["low", "high"]}
+            for i in range(9)
+        ]
+        errors = decide.validate_state(state)
+        assert any("at most 8" in e for e in errors)
+
+    def test_criterion_schema_errors(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": "c", "name": "C", "weight": -1, "rubric": ["only one level"]}
+        ]
+        errors = decide.validate_state(state)
+        assert any("weight must be a number >= 0" in e for e in errors)
+        assert any("at least 2 levels" in e for e in errors)
+
+    def test_weight_boolean_is_rejected(self):
+        state = _valid_state()
+        state["criteria"][0]["weight"] = True
+        errors = decide.validate_state(state)
+        assert any("weight must be a number >= 0" in e for e in errors)
+
+    def test_criterion_duplicate_and_invalid_ids(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": "c", "name": "C1", "rubric": ["low", "high"]},
+            {"id": "c", "name": "C2", "rubric": ["low", "high"]},
+        ]
+        errors = decide.validate_state(state)
+        assert any("duplicate id" in e for e in errors)
+
+    def test_error_messages_never_contain_values(self):
+        state = _valid_state()
+        state["alternatives"][0]["id"] = "SECRETLOOKINGID sk-abcdefgh1234"
+        errors = decide.validate_state(state)
+        assert all("SECRETLOOKINGID" not in e for e in errors)
