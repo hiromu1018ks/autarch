@@ -291,3 +291,84 @@ class TestValidateState:
         state["alternatives"][0]["id"] = "SECRETLOOKINGID sk-abcdefgh1234"
         errors = decide.validate_state(state)
         assert all("SECRETLOOKINGID" not in e for e in errors)
+
+
+class TestBuildRequest:
+    def test_payload_shape(self):
+        state = _valid_state()
+        payload = decide.build_request(state, "jev-test")
+        assert payload["model"] == "jev-test"
+        assert payload["state"] is state  # state object passed as-is
+        questions = payload["questions"]
+        assert set(questions) == {
+            "requires_human_preference",
+            "best_option",
+            "score__fit__option_a",
+            "score__fit__option_b",
+        }
+
+    def test_noul_question(self):
+        payload = decide.build_request(_valid_state(), "m")
+        noul = payload["questions"]["requires_human_preference"]
+        assert noul == {
+            "type": "noul",
+            "instructions": decide.NOUL_INSTRUCTIONS,
+        }
+
+    def test_choice_question(self):
+        payload = decide.build_request(_valid_state(), "m")
+        choice = payload["questions"]["best_option"]
+        assert choice["type"] == "choice"
+        assert choice["instructions"] == decide.CHOICE_INSTRUCTIONS
+        assert choice["criteria"] == {
+            "option_a": "Option A: First candidate.",
+            "option_b": "Option B: Second candidate.",
+        }
+
+    def test_score_questions_use_rubric_order(self):
+        state = _valid_state()
+        state["criteria"][0]["rubric"] = ["worst", "ok", "best"]
+        payload = decide.build_request(state, "m")
+        score = payload["questions"]["score__fit__option_a"]
+        assert score["type"] == "score"
+        assert score["instructions"] == (
+            "How well does the option 'Option A' satisfy the "
+            "'Requirement fit' criterion?"
+        )
+        assert score["criteria"] == ["worst", "ok", "best"]
+
+    def test_no_criteria_means_no_score_questions(self):
+        state = _valid_state()
+        state["criteria"] = []
+        payload = decide.build_request(state, "m")
+        assert set(payload["questions"]) == {
+            "requires_human_preference",
+            "best_option",
+        }
+
+    def test_matrix_covers_all_criteria_times_alternatives(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": f"c{i}", "name": f"C{i}", "rubric": ["low", "high"]}
+            for i in range(3)
+        ]
+        payload = decide.build_request(state, "m")
+        score_names = {
+            f"score__c{i}__option_{o}" for i in range(3) for o in ("a", "b")
+        }
+        assert score_names <= set(payload["questions"])
+        assert len(payload["questions"]) == 2 + 6
+
+    def test_request_builder_handles_cjk(self):
+        state = _valid_state()
+        state["question"] = "認証方式はどちらが適切か"
+        state["alternatives"][0]["name"] = "案A"
+        state["alternatives"][0]["description"] = "同一オリジンのWebアプリ向け。"
+        payload = decide.build_request(state, "m")
+        assert payload["questions"]["best_option"]["criteria"]["option_a"] == (
+            "案A: 同一オリジンのWebアプリ向け。"
+        )
+        # The payload must serialize to JSON without errors.
+        import json as json_module
+
+        json_module.dumps(payload, ensure_ascii=False)

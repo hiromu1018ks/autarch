@@ -204,3 +204,34 @@ def validate_state(state) -> list[str]:
                 errors.append(f"{label}: rubric levels must be non-empty strings")
 
     return errors
+
+
+def build_request(state: dict, model: str) -> dict:
+    """Build the SystemOne request payload from a redacted state."""
+    alternatives = state.get("alternatives", [])
+    criteria = state.get("criteria") or []
+    questions = {
+        "requires_human_preference": {
+            "type": "noul",
+            "instructions": NOUL_INSTRUCTIONS,
+        },
+        "best_option": {
+            "type": "choice",
+            "instructions": CHOICE_INSTRUCTIONS,
+            "criteria": {
+                alternative["id"]: f"{alternative['name']}: {alternative['description']}"
+                for alternative in alternatives
+            },
+        },
+    }
+    for criterion in criteria:
+        for alternative in alternatives:
+            questions[f"score__{criterion['id']}__{alternative['id']}"] = {
+                "type": "score",
+                "instructions": (
+                    f"How well does the option '{alternative['name']}' satisfy "
+                    f"the '{criterion['name']}' criterion?"
+                ),
+                "criteria": list(criterion["rubric"]),
+            }
+    return {"model": model, "state": state, "questions": questions}
