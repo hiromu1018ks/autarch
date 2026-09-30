@@ -992,6 +992,14 @@ class TestMain:
         assert captured.out == ""
         assert "cannot read state file" in captured.err
 
+    def test_non_utf8_state_file_exits_2(self, tmp_path, capsys):
+        state_file = tmp_path / "state.json"
+        state_file.write_bytes(b"\xff\xfe{\x00b\x00a\x00d\x00")
+        assert decide.main([f"--state-file={state_file}"]) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "cannot read state file" in captured.err
+
     def test_malformed_state_json_exits_2(self, tmp_path, capsys):
         state_file = tmp_path / "state.json"
         state_file.write_text("{not json", encoding="utf-8")

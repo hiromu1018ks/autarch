@@ -568,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         raw_state = Path(args.state_file).read_text(encoding="utf-8")
-    except OSError as error:
+    except (OSError, UnicodeDecodeError) as error:
         print(
             f"error: cannot read state file: {type(error).__name__}",
             file=sys.stderr,
