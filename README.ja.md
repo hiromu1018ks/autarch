@@ -2,62 +2,65 @@
 
 [English](README.md) | **日本語**
 
-> **Autarch turns uncertainty into structured decisions.**
->
-> Autarch は、ユーザーが判断に迷ったとき、エージェントが候補を作り、Jev が評価し、最も合理的な選択を導く意思決定支援スキルである。
+> **迷いを、根拠のある判断に変える。**
 
-`/autarch` は [Claude Code](https://claude.com/claude-code) 向けの意思決定スキルです。コーディングエージェントが「DBはPostgreSQLとSQLiteのどちらにしますか？」のような質問で作業を止めたとき、比較する知識や気力がなくても `/autarch` を実行すれば、あとは Autarch が処理します。エージェントが中立的な候補と評価軸を組み立て、[Jev](https://typesafe.ai/)（TypeSafe AI の System One モデル）が評価し、決定的なポリシーが最適案を採用して作業を続行するか、あなたにしか答えられない小さな質問を1つだけ返します。
+Autarch は、[Claude Code](https://claude.com/claude-code) 用の意思決定スキルです。エージェントが判断に迷ったときに候補を比べ、作業を先へ進める手助けをします。
+
+`/autarch` を実行すると、エージェントが候補と評価基準を整理します。評価には [TypeSafe AI](https://typesafe.ai/) の System One モデル Jev を使います。結果を受け取ったエンジンは、決められたルールに従って案を選ぶか、あなたにしか決められない点を質問します。
 
 ```text
-Agent:  "DBはPostgreSQLとSQLiteのどちらにしますか？"
-User:   /autarch
-Autarch: SQLite を選択 — ローカル単一ユーザー用途で外部サーバーが
-         不要なため。Jev confidence: 97%
-Agent:  "了解。SQLiteで実装を続ける。"
+エージェント: 「DBはPostgreSQLとSQLiteのどちらにしますか？」
+あなた:       /autarch
+Autarch:      SQLite を選択。ローカルの単一ユーザー用途なら
+              外部サーバーが不要です。Jev の確信度: 97%
+エージェント: 「了解しました。SQLiteで作業を続けます。」
 ```
 
 ## 仕組み
 
-3つの役割を意図的に分離しています。
+候補を作る役、候補を評価する役、最終結果を決める役を分けています。
 
-| 役割 | 責務 |
+| 役割 | 担当すること |
 |---|---|
-| **Agent** | 未解決の質問を特定し、2〜5個の*中立的な*候補を生成し、根拠を収集し、評価軸を定義する |
-| **Jev** | 評価する: Noul 質問1個（人間の好みが必要か?）、Choice 質問1個（どの案か?）、そして評価軸 × 候補ごとに Score 質問1個 |
-| **decide.py** | 入力を検証し、シークレットを redact し、API を呼び、決定的なポリシーを適用し、判断を記録する |
+| エージェント | 未解決の質問を特定し、中立な候補を2〜5案作る。根拠を集め、評価基準を定める |
+| Jev | 人の好みが判断に必要か、どの案が目的に合うか、各評価基準で各案がどの程度合うかを評価する |
+| `decide.py` | 入力を検証し、送信前に秘密情報を伏せ、APIを呼び出す。結果に判定ルールを適用し、判断を記録する |
 
-エンジンは**標準ライブラリのみの単一 Python スクリプト**です。インストールするパッケージも、依存関係の drift もありません。決定的でなければならない部分（閾値・ゲート・redaction・ログ）はエージェントの判断ではなくコードに置いています。
+Jev は3種類の質問に答えます。Noul は人の好みや意向が必要か、Choice はどの候補がよいか、Score は各候補が評価基準をどの程度満たすかを判定します。
 
-Jev に渡す判断材料（質問・候補・根拠・評価軸）は、会話言語に関係なく評価精度のために常に**英語**で書かれます。結果やユーザーに返ってくる質問は、会話言語（日本語なら日本語）で表示されます。
+判断エンジンは、Python の標準ライブラリだけで動く単一スクリプトです。追加パッケージは必要ありません。しきい値の判定、入力確認、秘密情報のマスキング、ログ記録はコードで行います。
 
-### 判定ポリシー
+Jev に送る質問・候補・根拠・評価基準は、評価の一貫性を保つため常に英語です。元の言葉であることが根拠になる引用だけは、原文と英訳を添えます。結果と、あなたに返す質問は会話の言語で表示します。
 
-毎回の実行は同じゲートをこの順序で通ります:
+### 判定の流れ
 
-1. **Provider error** → `PROVIDER_UNAVAILABLE` — API の失敗・応答異常時には絶対に自動選択しない
-2. **Human-preference ゲート**（Noul ≥ 0.70）→ `ASK_USER` — 判断があなたの好みや意向に依存する場合、confidence が高くても Autarch は選ばない
-3. **Choice/Score 整合性** — Choice の1位と重み付き Score の1位が食違う場合 → `ASK_USER`
-4. **Probability gap** — 上位2案の確率差が 0.15 未満の場合 → `ASK_USER`
-5. **Confidence 帯域** — ≥ 0.85 で `SELECT_OPTION`、≥ 0.60 で `SELECT_OPTION_WITH_CAUTION`、未満で `ASK_USER`
+エンジンは次の順で判定します。条件に当てはまった時点で、その結果を返します。
 
-判断があなたに戻ってくるとき、Autarch は元の技術的な質問を**そのまま繰り返しません**。決め手となる要素1つに絞った、あなたにしか答えられない最小の質問へ変換して返します。
+1. **Jev のエラー**: API が失敗した、または有効な応答を返さなかった場合は `PROVIDER_UNAVAILABLE`。自動選択はしません。
+2. **人の判断が必要か**: 人の好みや意向が必要だと Jev が判定し、その確率が `0.70` 以上なら `ASK_USER`。
+3. **評価結果が一致するか**: Choice の1位と、評価基準を重み付けして集計した Score の1位が異なる場合は `ASK_USER`。
+4. **上位候補に差があるか**: 1位と2位の確率差が `0.15` 未満なら `ASK_USER`。
+5. **確信度は十分か**: 確信度が `0.85` 以上なら `SELECT_OPTION`、`0.60` 以上なら `SELECT_OPTION_WITH_CAUTION`、それ未満なら `ASK_USER`。
 
-なお Choice の `probabilities` は候補集合上の確率分布（総和 ≒ 1）であって点数ではありません。複数軸の評価は `score_summary` に別途含まれます。
+`ASK_USER` になると、Autarch は最初の技術的な質問をそのまま繰り返しません。判断を分ける要素に絞り、あなたにしか答えられない質問を返します。
+
+Choice の `probabilities` は候補間の確率分布で、点数ではありません。複数の評価基準に基づく集計結果は `score_summary` に含まれます。
 
 ## インストール
 
-要件: Python 3.10+、[Claude Code](https://claude.com/claude-code)、TypeSafe AI の API キー。
+必要なものは Python 3.10 以降、[Claude Code](https://claude.com/claude-code)、TypeSafe AI の API キーです。
 
 ```bash
-# 1. skills CLI でインストール（エージェントを自動検出）
+# 1. skills CLI でインストール（利用中のエージェントを自動検出）
 npx skills add hiromu1018ks/autarch
 
-# 2. API キーを追加（TypeSafe AI コンソールで取得）
+# 2. API キーをシェルの設定に追加（キーは TypeSafe AI のコンソールで取得）
 echo 'export TYPESAFE_API_KEY="your-key"' >> ~/.bashrc
 ```
 
-<details>
-<summary>手動インストール（clone + symlink）</summary>
+この例は Bash 向けです。別のシェルを使う場合は、そのシェルの設定ファイルに `TYPESAFE_API_KEY` を設定してください。
+
+手動でインストールする場合は、リポジトリを取得して Claude Code のスキルディレクトリへリンクします。
 
 ```bash
 git clone https://github.com/hiromu1018ks/autarch.git
@@ -65,19 +68,19 @@ mkdir -p ~/.claude/skills
 ln -s /path/to/autarch/skills/autarch ~/.claude/skills/autarch
 ```
 
-</details>
+`/path/to/autarch` は、clone したリポジトリの実際のパスに置き換えてください。
 
-あとは Claude Code セッションの中で、委譲したい質問が出たら:
+Claude Code のセッションで、エージェントから判断を委ねたい質問が出たときに実行します。
 
 ```text
 /autarch
 ```
 
-Autarch はユーザーが明示的に実行したときだけ動きます（`disable-model-invocation: true`）。エージェントが自分の判断で発動することはありません。
+Autarch が動くのは、あなたが `/autarch` を明示的に実行したときだけです。設定の `disable-model-invocation: true` により、エージェントが自分の判断で呼び出すことはありません。
 
-## エンジン CLI
+## エンジンを直接実行する
 
-スキルは `scripts/decide.py` を実行します。直接使うこともできます:
+スキルは `scripts/decide.py` を呼び出します。このスクリプトは単独でも実行できます。
 
 ```bash
 python3 skills/autarch/scripts/decide.py --state-file state.json \
@@ -86,43 +89,50 @@ python3 skills/autarch/scripts/decide.py --state-file state.json \
   [--timeout 30] [--endpoint https://api.typesafe.ai]
 ```
 
-- 入力: decision state JSON（`goal`、`question`、`alternatives[2〜5]`、任意の `criteria[0〜8]`）
-- stdout: 常に1個の resolution JSON（`decision`、`rule`、`selected_option`、`confidence`、`probabilities`、`score_summary` など）
-- 終了コード: `0` resolution を生成（`PROVIDER_UNAVAILABLE` を含む）· `2` usage/入力エラー · `1` 内部エラー
+- **入力**: 判断内容を記した JSON ファイル。`goal`、`question`、2〜5件の `alternatives` が必要です。`criteria` は省略でき、指定する場合は0〜8件です。
+- **標準出力**: 判定結果を表す JSON オブジェクトを1つ出力します。`decision`、`rule`、`selected_option`、`confidence`、`probabilities`、`score_summary` などが含まれます。
+- **終了コード**: `0` は判定結果を出力（`PROVIDER_UNAVAILABLE` や `INSUFFICIENT_OPTIONS` を含む）、`2` は引数・ファイル読み込み・JSON 構文のエラー、`1` は内部エラーです。
 
-state スキーマと実行フローの詳細は [SKILL.md](skills/autarch/SKILL.md) を参照してください。
+入力 JSON の完全なスキーマと実行手順は [スキルの説明](skills/autarch/SKILL.md) を参照してください。
 
-## プライバシーとシークレット
+## プライバシーと秘密情報
 
-- エージェントには、`.env` ファイル・クレデンシャル・秘密鍵・シークレットストアを根拠として読み取らないよう指示しています。
-- 送信前に、エンジンが sensitive キー（`password`、`token`、`api_key` など）とシークレットらしい文字列パターン（`sk-...`、`ghp_...`、AWS キー、`Bearer ...`、秘密鍵ブロック）を再帰的に redact します。報告されるのは置換件数のみです。
-- decision log（`~/.autarch/decisions.jsonl`）にはサニタイズ済みの質問要約・option/criterion の id・数値のみを記録します。state 全文もシークレット値も残しません。
-- エラーメッセージにシークレット値は含まれません。
+- エージェントには、`.env` ファイル、認証情報、秘密鍵、シークレットストアを根拠として読まないよう指示しています。
+- API へ送信する前に、エンジンが秘密情報を伏せます。対象は `password`、`token`、`api_key` などのキーと、`sk-...`、`ghp_...`、AWS キー、`Bearer ...`、秘密鍵ブロックなどの文字列パターンです。置き換え件数だけを報告します。
+- 判断ログ `~/.autarch/decisions.jsonl` には、記録時刻、質問の要約、候補と評価基準の ID、確率や評価結果などの数値、判定結果、モデル名、処理時間を記録します。質問の要約は秘密情報を伏せ、500文字までにします。入力全体やシークレット値は記録しません。候補と評価基準の ID はそのまま記録されるため、秘密情報を含めないでください。
+- エラーメッセージに秘密の値は含まれません。
 
 ## 開発
+
+テストには `pytest` を使います。通常のテストはネットワークに接続しません。
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install pytest
 
-.venv/bin/python3 -m pytest tests/            # 107テスト、ネットワーク不要
-AUTARCH_LIVE=1 .venv/bin/python3 -m pytest tests/test_live.py -v   # 任意: 実APIスモークテスト
+.venv/bin/python3 -m pytest tests/
 ```
 
-プロジェクト構成:
+TypeSafe AI の API キーを設定すると、実 API を使うスモークテストも実行できます。
+
+```bash
+AUTARCH_LIVE=1 .venv/bin/python3 -m pytest tests/test_live.py -v
+```
+
+主なファイルは次のとおりです。
 
 ```text
-skills/autarch/SKILL.md        # スキル本体（エージェント向け指示）
-skills/autarch/scripts/decide.py  # 標準ライブラリのみのエンジン
-tests/                          # pytest スイート（ネットワーク不要）+ live テスト
-docs/                           # 要件定義・設計doc
+skills/autarch/SKILL.md                 # エージェント向けのスキル説明
+skills/autarch/scripts/decide.py        # 標準ライブラリだけで動く判断エンジン
+tests/                                  # pytest テスト（ネットワーク不要）と実 API テスト
+docs/                                   # 要件定義書と設計資料
 ```
 
-## ドキュメント
+## 関連ドキュメント
 
-- [要件定義書](docs/Autarch_requirements_v0.2.md) — プロダクト要件、KPI、ロードマップ
-- [実装設計](docs/superpowers/specs/2026-09-30-autarch-skill-implementation-design.md) — state スキーマ、API 契約、ポリシー詳細
-- [実装プラン](docs/superpowers/plans/2026-09-30-autarch-skill.md) — このコードを生んだ11タスクの TDD プラン
+- [要件定義書](docs/Autarch_requirements_v0.2.md): プロダクト要件、KPI、ロードマップ
+- [実装設計書](docs/superpowers/specs/2026-09-30-autarch-skill-implementation-design.md): 入力形式、API 契約、判定ポリシー
+- [実装計画](docs/superpowers/plans/2026-09-30-autarch-skill.md): 実装を進めた11タスクの TDD 計画
 
 ## ライセンス
 
