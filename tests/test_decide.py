@@ -635,3 +635,140 @@ class TestParseAnswers:
         answers = make_answers(state, confidence=True)
         with pytest.raises(decide.ProviderError):
             decide.parse_answers(answers_body(answers), state)
+
+
+def _thresholds():
+    return {
+        "auto_select": 0.85,
+        "review": 0.60,
+        "min_gap": 0.15,
+        "human_preference": 0.70,
+    }
+
+
+class TestComputeScoreSummary:
+    def test_normalized_composite(self):
+        state = _valid_state()  # rubric: 3 levels -> divide by 2
+        parsed_scores = {"fit": {"option_a": 2.0, "option_b": 0.0}}
+        parsed = {"scores": parsed_scores}
+        summary = decide.compute_score_summary(state, parsed)
+        assert summary["option_a"] == {"fit": 1.0, "composite": 1.0}
+        assert summary["option_b"] == {"fit": 0.0, "composite": 0.0}
+
+    def test_weighted_composite(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": "c1", "name": "C1", "weight": 3.0, "rubric": ["low", "high"]},
+            {"id": "c2", "name": "C2", "weight": 1.0, "rubric": ["low", "high"]},
+        ]
+        parsed = {"scores": {"c1": {"option_a": 1.0, "option_b": 0.0},
+                              "c2": {"option_a": 0.0, "option_b": 1.0}}}
+        summary = decide.compute_score_summary(state, parsed)
+        assert summary["option_a"]["composite"] == 0.75
+        assert summary["option_b"]["composite"] == 0.25
+
+    def test_all_zero_weights_fall_back_to_equal(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": "c1", "name": "C1", "weight": 0, "rubric": ["low", "high"]},
+            {"id": "c2", "name": "C2", "weight": 0, "rubric": ["low", "high"]},
+        ]
+        parsed = {"scores": {"c1": {"option_a": 1.0, "option_b": 0.0},
+                              "c2": {"option_a": 0.0, "option_b": 1.0}}}
+        summary = decide.compute_score_summary(state, parsed)
+        assert summary["option_a"]["composite"] == 0.5
+        assert summary["option_b"]["composite"] == 0.5
+
+    def test_no_criteria_returns_empty(self):
+        state = _valid_state()
+        state["criteria"] = []
+        assert decide.compute_score_summary(state, {"scores": {}}) == {}
+
+
+class TestResolve:
+    def _run(self, state=None, **answer_kwargs):
+        state = state or _valid_state()
+        answers = make_answers(state, **answer_kwargs)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        return decide.resolve(state, parsed, _thresholds())
+
+    def test_select_option_when_confident(self):
+        resolution = self._run(choice="option_a", confidence=0.94)
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["rule"] == "confidence"
+        assert resolution["selected_option"] == "option_a"
+        assert resolution["probability"] == 0.85
+        assert resolution["confidence"] == 0.94
+        assert resolution["score_summary"] is not None
+
+    def test_caution_band(self):
+        resolution = self._run(confidence=0.70)
+        assert resolution["decision"] == "SELECT_OPTION_WITH_CAUTION"
+        assert resolution["rule"] == "confidence"
+        assert resolution["selected_option"] == "option_a"
+
+    def test_ask_user_on_low_confidence(self):
+        resolution = self._run(confidence=0.40)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "low_confidence"
+        assert resolution["selected_option"] is None
+
+    def test_ask_user_on_probability_gap(self):
+        resolution = self._run(
+            probabilities={"option_a": 0.55, "option_b": 0.45}
+        )
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "probability_gap"
+
+    def test_ask_user_on_human_preference(self):
+        resolution = self._run(noul=0.9, confidence=0.99)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "human_preference"
+        assert resolution["human_preference_probability"] == 0.9
+
+    def test_ask_user_on_choice_score_disagreement(self):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a", confidence=0.9)
+        # Make option_b the score winner: top rubric level for b only.
+        answers["score__fit__option_a"]["score"] = 0.0
+        answers["score__fit__option_a"]["probabilities"] = {
+            "0": 1.0, "1": 0.0, "2": 0.0
+        }
+        parsed = decide.parse_answers(answers_body(answers), state)
+        resolution = decide.resolve(state, parsed, _thresholds())
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "choice_score_disagreement"
+
+    def test_human_preference_beats_high_confidence_choice(self):
+        state = _valid_state()
+        answers = make_answers(state, noul=0.95, choice="option_a", confidence=0.95)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        resolution = decide.resolve(state, parsed, _thresholds())
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "human_preference"
+
+    def test_resolve_without_criteria_skips_consistency(self):
+        state = _valid_state()
+        state["criteria"] = []
+        answers = make_answers(state, choice="option_a", confidence=0.9)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        resolution = decide.resolve(state, parsed, _thresholds())
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["score_summary"] is None
+
+    def test_composite_tie_is_disagreement(self):
+        state = _valid_state()
+        state["criteria"] = [
+            {"id": "fit", "name": "Fit", "rubric": ["low", "high"]}
+        ]
+        answers = make_answers(state, choice="option_a", confidence=0.9)
+        # Both options score identically -> no unique score winner.
+        for option in ("option_a", "option_b"):
+            answers["score__fit__" + option]["score"] = 1.0
+            answers["score__fit__" + option]["probabilities"] = {
+                "0": 0.0, "1": 1.0
+            }
+        parsed = decide.parse_answers(answers_body(answers), state)
+        resolution = decide.resolve(state, parsed, _thresholds())
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "choice_score_disagreement"

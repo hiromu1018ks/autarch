@@ -355,3 +355,122 @@ def parse_answers(body: bytes, state: dict) -> dict:
         "probabilities": probabilities,
         "scores": scores,
     }
+
+
+def compute_score_summary(state: dict, parsed: dict) -> dict:
+    """Compute per-option normalized criterion scores and weighted composite."""
+    criteria = state.get("criteria") or []
+    if not criteria:
+        return {}
+    weights = {
+        criterion["id"]: criterion.get("weight", 1.0) for criterion in criteria
+    }
+    total_weight = sum(weights.values())
+    if total_weight <= 0:
+        weights = {criterion_id: 1.0 for criterion_id in weights}
+        total_weight = float(len(weights))
+    summary: dict[str, dict] = {}
+    for alternative in state["alternatives"]:
+        option_id = alternative["id"]
+        entry: dict[str, float] = {}
+        composite = 0.0
+        for criterion in criteria:
+            criterion_id = criterion["id"]
+            expected = parsed["scores"][criterion_id][option_id]
+            normalized = expected / (len(criterion["rubric"]) - 1)
+            entry[criterion_id] = round(normalized, 4)
+            composite += weights[criterion_id] * normalized
+        entry["composite"] = round(composite / total_weight, 4)
+        summary[option_id] = entry
+    return summary
+
+
+def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
+    """Apply the deterministic resolution policy (spec section 8)."""
+    probabilities = parsed["probabilities"]
+    confidence = parsed["confidence"]
+    human_preference = parsed["human_preference"]
+    has_criteria = bool(state.get("criteria"))
+    score_summary = compute_score_summary(state, parsed) if has_criteria else None
+
+    resolution = {
+        "decision": None,
+        "rule": None,
+        "selected_option": None,
+        "confidence": confidence,
+        "probability": None,
+        "probabilities": probabilities,
+        "human_preference_probability": human_preference,
+        "score_summary": score_summary,
+        "reason": "",
+    }
+
+    if human_preference >= thresholds["human_preference"]:
+        resolution["decision"] = "ASK_USER"
+        resolution["rule"] = "human_preference"
+        resolution["reason"] = (
+            "Jev indicates this decision depends on the user's personal "
+            "preference or intent; it must not be auto-selected."
+        )
+        return resolution
+
+    choice_winner = parsed["choice"]
+
+    if has_criteria:
+        composites = {
+            option_id: entry["composite"]
+            for option_id, entry in score_summary.items()
+        }
+        best = max(composites.values())
+        score_winners = [
+            option_id for option_id, value in composites.items() if value == best
+        ]
+        if len(score_winners) != 1 or score_winners[0] != choice_winner:
+            resolution["decision"] = "ASK_USER"
+            resolution["rule"] = "choice_score_disagreement"
+            resolution["reason"] = (
+                "The Choice winner and the weighted Score winner differ; "
+                "returning the decision to the user."
+            )
+            return resolution
+
+    ranked = sorted(probabilities.values(), reverse=True)
+    gap = ranked[0] - ranked[1]
+    if gap < thresholds["min_gap"]:
+        resolution["decision"] = "ASK_USER"
+        resolution["rule"] = "probability_gap"
+        resolution["reason"] = (
+            f"Top two options are close (probability gap {gap:.2f} "
+            f"< {thresholds['min_gap']:g}); returning the decision to the user."
+        )
+        return resolution
+
+    resolution["selected_option"] = choice_winner
+    resolution["probability"] = probabilities[choice_winner]
+    agreement = (
+        f"Choice and Score agree on '{choice_winner}'"
+        if has_criteria
+        else f"Jev selected '{choice_winner}'"
+    )
+    if confidence >= thresholds["auto_select"]:
+        resolution["decision"] = "SELECT_OPTION"
+        resolution["rule"] = "confidence"
+        resolution["reason"] = (
+            f"{agreement} with confidence {confidence:.2f}."
+        )
+    elif confidence >= thresholds["review"]:
+        resolution["decision"] = "SELECT_OPTION_WITH_CAUTION"
+        resolution["rule"] = "confidence"
+        resolution["reason"] = (
+            f"{agreement}, but confidence {confidence:.2f} is below the "
+            "auto-select threshold."
+        )
+    else:
+        resolution["decision"] = "ASK_USER"
+        resolution["rule"] = "low_confidence"
+        resolution["selected_option"] = None
+        resolution["reason"] = (
+            f"Confidence {confidence:.2f} is below the review threshold; "
+            "returning the decision to the user."
+        )
+    return resolution
