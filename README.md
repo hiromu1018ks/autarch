@@ -1,5 +1,7 @@
 # Autarch
 
+**English** | [日本語](README.ja.md)
+
 > **Autarch turns uncertainty into structured decisions.**
 
 `/autarch` is a decision skill for [Claude Code](https://claude.com/claude-code). When a coding agent stops and asks you something like *"Should I use SQLite or PostgreSQL?"* — and you don't have the expertise (or energy) to compare — run `/autarch`. The agent builds neutral alternatives and evaluation criteria, [Jev](https://typesafe.ai/) (a System One model by TypeSafe AI) evaluates them, and a deterministic policy either adopts the best option and continues working, or hands you back one small question only you can answer.
