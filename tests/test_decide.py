@@ -466,3 +466,172 @@ class TestSendRequest:
 
 def test_provider_error_is_exception():
     assert issubclass(decide.ProviderError, Exception)
+
+
+def make_answers(state, noul=0.1, choice=None, confidence=0.9, probabilities=None):
+    """Build a consistent answers dict whose winner is `choice`."""
+    choice = choice or state["alternatives"][0]["id"]
+    if probabilities is None:
+        losers = [a["id"] for a in state["alternatives"] if a["id"] != choice]
+        share = 0.15 / len(losers) if losers else 0.0
+        probabilities = {a["id"]: (0.85 if a["id"] == choice else share)
+                         for a in state["alternatives"]}
+    answers = {
+        "requires_human_preference": {"type": "noul", "noul": noul},
+        "best_option": {
+            "type": "choice",
+            "choice": choice,
+            "confidence": confidence,
+            "probabilities": probabilities,
+        },
+    }
+    for criterion in state.get("criteria") or []:
+        levels = len(criterion["rubric"])
+        for alternative in state["alternatives"]:
+            winner = alternative["id"] == choice
+            top_level = levels - 1 if winner else 1
+            answers[f"score__{criterion['id']}__{alternative['id']}"] = {
+                "type": "score",
+                "score": float(top_level),
+                "confidence": 0.9,
+                "probabilities": {
+                    str(i): (1.0 if i == top_level else 0.0) for i in range(levels)
+                },
+            }
+    return answers
+
+
+def answers_body(answers):
+    import json as json_module
+
+    return json_module.dumps({"model": "jev-test", "answers": answers}).encode()
+
+
+class TestParseAnswers:
+    def test_happy_path(self):
+        state = _valid_state()
+        answers = make_answers(state, noul=0.1, choice="option_a", confidence=0.94)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        assert parsed["human_preference"] == 0.1
+        assert parsed["choice"] == "option_a"
+        assert parsed["confidence"] == 0.94
+        assert parsed["probabilities"]["option_a"] == 0.85
+        assert parsed["probabilities"]["option_b"] == 0.15
+        assert parsed["scores"]["fit"]["option_a"] == 2.0
+        assert parsed["scores"]["fit"]["option_b"] == 1.0
+
+    def test_malformed_json_raises(self):
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(b"not json at all", _valid_state())
+
+    def test_missing_answers_object_raises(self):
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(b'{"model": "m"}', _valid_state())
+
+    def test_missing_noul_answer_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        del answers["requires_human_preference"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_wrong_answer_type_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["best_option"]["type"] = "score"
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_noul_out_of_range_raises(self):
+        state = _valid_state()
+        for bad in (-0.01, 1.01, True):
+            answers = make_answers(state, noul=bad)
+            with pytest.raises(decide.ProviderError):
+                decide.parse_answers(answers_body(answers), state)
+
+    def test_unknown_choice_raises(self):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a")
+        answers["best_option"]["choice"] = "option_z"
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_confidence_out_of_range_raises(self):
+        state = _valid_state()
+        for bad in (-0.1, 1.1):
+            answers = make_answers(state, confidence=bad)
+            with pytest.raises(decide.ProviderError):
+                decide.parse_answers(answers_body(answers), state)
+
+    def test_probability_out_of_range_raises(self):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a")
+        answers["best_option"]["probabilities"]["option_b"] = 1.5
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_missing_probability_key_raises(self):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a")
+        del answers["best_option"]["probabilities"]["option_b"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_choice_not_highest_probability_raises(self):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a")
+        answers["best_option"]["probabilities"] = {
+            "option_a": 0.3,
+            "option_b": 0.7,
+        }
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_missing_score_answer_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        del answers["score__fit__option_b"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_score_out_of_rubric_range_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["score__fit__option_a"]["score"] = 3.0  # rubric has 3 levels (0..2)
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_score_probability_index_mismatch_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["score__fit__option_a"]["probabilities"] = {
+            "0": 0.5,
+            "1": 0.5,
+            "2": 0.0,
+            "3": 0.0,
+        }
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_score_confidence_out_of_range_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["score__fit__option_a"]["confidence"] = 1.2
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_parse_answers_accepts_probabilities_that_do_not_sum_to_one(self):
+        state = _valid_state()
+        answers = make_answers(
+            state,
+            choice="option_a",
+            probabilities={"option_a": 0.5, "option_b": 0.1},
+        )
+        parsed = decide.parse_answers(answers_body(answers), state)
+        assert parsed["probabilities"] == {"option_a": 0.5, "option_b": 0.1}
+
+    def test_boolean_confidence_rejected(self):
+        state = _valid_state()
+        answers = make_answers(state, confidence=True)
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)

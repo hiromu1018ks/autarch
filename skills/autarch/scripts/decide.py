@@ -266,3 +266,92 @@ def build_request(state: dict, model: str) -> dict:
                 "criteria": list(criterion["rubric"]),
             }
     return {"model": model, "state": state, "questions": questions}
+
+
+def _require_number(value, minimum: float, maximum: float, detail: str) -> float:
+    if not _is_number(value) or not minimum <= value <= maximum:
+        raise ProviderError(f"{detail} is out of range [{minimum:g}, {maximum:g}]")
+    return float(value)
+
+
+def parse_answers(body: bytes, state: dict) -> dict:
+    """Parse and validate a SystemOne response against the redacted state."""
+    try:
+        document = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ProviderError(
+            f"response is not valid JSON ({type(error).__name__})"
+        ) from None
+    answers = document.get("answers") if isinstance(document, dict) else None
+    if not isinstance(answers, dict):
+        raise ProviderError("response has no answers object")
+
+    alternative_ids = [alternative["id"] for alternative in state["alternatives"]]
+    criteria = state.get("criteria") or []
+
+    noul_answer = answers.get("requires_human_preference")
+    if not isinstance(noul_answer, dict) or noul_answer.get("type") != "noul":
+        raise ProviderError(
+            "requires_human_preference answer is missing or has wrong type"
+        )
+    human_preference = _require_number(
+        noul_answer.get("noul"), 0.0, 1.0, "requires_human_preference.noul"
+    )
+
+    choice_answer = answers.get("best_option")
+    if not isinstance(choice_answer, dict) or choice_answer.get("type") != "choice":
+        raise ProviderError("best_option answer is missing or has wrong type")
+    selected = choice_answer.get("choice")
+    if selected not in alternative_ids:
+        raise ProviderError("best_option.choice is not one of the alternative ids")
+    confidence = _require_number(
+        choice_answer.get("confidence"), 0.0, 1.0, "best_option.confidence"
+    )
+    raw_probabilities = choice_answer.get("probabilities")
+    if (
+        not isinstance(raw_probabilities, dict)
+        or set(raw_probabilities) != set(alternative_ids)
+    ):
+        raise ProviderError(
+            "best_option.probabilities must cover every alternative id"
+        )
+    probabilities = {
+        alternative_id: _require_number(
+            value, 0.0, 1.0, f"best_option.probabilities[{alternative_id}]"
+        )
+        for alternative_id, value in raw_probabilities.items()
+    }
+    if probabilities[selected] != max(probabilities.values()):
+        raise ProviderError(
+            "best_option.choice does not match the highest probability"
+        )
+
+    scores: dict[str, dict[str, float]] = {}
+    for criterion in criteria:
+        for alternative in state["alternatives"]:
+            name = f"score__{criterion['id']}__{alternative['id']}"
+            answer = answers.get(name)
+            if not isinstance(answer, dict) or answer.get("type") != "score":
+                raise ProviderError(f"{name} answer is missing or has wrong type")
+            max_level = len(criterion["rubric"]) - 1
+            score = _require_number(answer.get("score"), 0.0, float(max_level),
+                                    f"{name}.score")
+            _require_number(answer.get("confidence"), 0.0, 1.0, f"{name}.confidence")
+            level_probabilities = answer.get("probabilities")
+            expected_keys = {str(index) for index in range(len(criterion["rubric"]))}
+            if (
+                not isinstance(level_probabilities, dict)
+                or set(level_probabilities) != expected_keys
+            ):
+                raise ProviderError(
+                    f"{name}.probabilities must cover rubric levels exactly"
+                )
+            scores.setdefault(criterion["id"], {})[alternative["id"]] = score
+
+    return {
+        "human_preference": human_preference,
+        "choice": selected,
+        "confidence": confidence,
+        "probabilities": probabilities,
+        "scores": scores,
+    }
