@@ -26,6 +26,8 @@ Three roles, deliberately separated:
 
 The engine is a **single stdlib-only Python script** — no packages to install, no dependencies to drift. The deterministic part (thresholds, gates, redaction, logging) lives in code, not in the agent's judgment.
 
+Decision material sent to Jev (question, alternatives, evidence, criteria) is always written in **English** for evaluation reliability, whatever language you converse in — results and any question returned to you come back in your conversation language.
+
 ### Decision policy
 
 Every invocation runs through the same gates, in order:

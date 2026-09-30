@@ -37,6 +37,11 @@ class TestSkillMarkdown:
     def test_secret_exclusion_instruction(self):
         assert "Do not read or include .env files, credential files," in _read()
 
+    def test_decision_material_written_in_english(self):
+        text = _read()
+        assert "Write all decision material in English" in text
+        assert "user's conversation language" in text
+
     def test_probability_is_not_a_score(self):
         assert "NOT scores" in _read()
 

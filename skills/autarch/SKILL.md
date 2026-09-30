@@ -32,6 +32,16 @@ Example:
 - Decision problem: "Select the authentication state strategy that best
   matches the current project."
 
+Write all decision material in English — `goal`, `question`,
+`known_constraints`, `environment`, `evidence`, `alternatives`, and
+`criteria` — regardless of the conversation language. Jev's documented
+interface and examples are English, and evaluation reliability is
+strongest there; a fixed language also keeps evaluations comparable
+across decisions. Preserve exact wording as a verbatim quote in the
+original language only when the quoting itself is the evidence, adding
+a one-line English gloss. User-facing output — the resolution report
+and any ASK_USER question — stays in the user's conversation language.
+
 ### Step 3 — Generate alternatives (2–5, neutral)
 
 Generate 2 to 5 materially different, feasible options; default to 3. If
