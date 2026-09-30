@@ -44,7 +44,7 @@ Requirements: Python 3.10+, [Claude Code](https://claude.com/claude-code), and a
 
 ```bash
 # 1. Clone anywhere
-git clone https://github.com/<you>/autarch.git
+git clone https://github.com/hiromu1018ks/autarch.git
 
 # 2. Link the skill so Claude Code finds it in every project
 mkdir -p ~/.claude/skills
