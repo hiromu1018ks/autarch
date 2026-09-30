@@ -9,8 +9,11 @@ module knows about decisions, not about any particular field.
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 
 REDACTED = "[REDACTED]"
 
@@ -474,3 +477,48 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
             "returning the decision to the user."
         )
     return resolution
+
+
+def default_log_path() -> Path:
+    return Path.home() / ".autarch" / "decisions.jsonl"
+
+
+def append_log(record: dict, log_path: Path | None = None) -> None:
+    """Append one decision record as a JSON line. Never raises."""
+    path = log_path or default_log_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as error:
+        print(
+            f"warning: could not write decision log: {type(error).__name__}",
+            file=sys.stderr,
+        )
+
+
+def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
+    question = state.get("question", "") if isinstance(state, dict) else ""
+    alternatives = state.get("alternatives") if isinstance(state, dict) else None
+    criteria = state.get("criteria") if isinstance(state, dict) else None
+    return {
+        "timestamp": datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        "sanitized_question": sanitize_text(str(question)),
+        "option_ids": [
+            item.get("id")
+            for item in (alternatives or [])
+            if isinstance(item, dict)
+        ],
+        "criteria_ids": [
+            item.get("id") for item in (criteria or []) if isinstance(item, dict)
+        ],
+        "score_summary": output.get("score_summary"),
+        "choice_probabilities": output.get("probabilities"),
+        "choice_confidence": output.get("confidence"),
+        "human_preference_probability": output.get("human_preference_probability"),
+        "resolution": output.get("decision"),
+        "model": output.get("model"),
+        "latency_ms": latency_ms,
+    }

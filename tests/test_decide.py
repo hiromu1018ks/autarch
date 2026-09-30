@@ -772,3 +772,70 @@ class TestResolve:
         resolution = decide.resolve(state, parsed, _thresholds())
         assert resolution["decision"] == "ASK_USER"
         assert resolution["rule"] == "choice_score_disagreement"
+
+
+class TestLogging:
+    def test_default_log_path_under_home(self, tmp_path, monkeypatch):
+        import pathlib
+
+        monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+        assert decide.default_log_path() == tmp_path / ".autarch" / "decisions.jsonl"
+
+    def test_append_log_creates_file_and_appends(self, tmp_path):
+        log_path = tmp_path / "nested" / "decisions.jsonl"
+        decide.append_log({"resolution": "SELECT_OPTION"}, log_path)
+        decide.append_log({"resolution": "ASK_USER"}, log_path)
+        lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+        import json as json_module
+
+        assert json_module.loads(lines[0])["resolution"] == "SELECT_OPTION"
+        assert json_module.loads(lines[1])["resolution"] == "ASK_USER"
+
+    def test_append_log_failure_warns_only(self, tmp_path, capsys):
+        # A directory path cannot be opened for append -> OSError.
+        decide.append_log({"resolution": "SELECT_OPTION"}, tmp_path)
+        captured = capsys.readouterr()
+        assert "warning" in captured.err
+        assert captured.out == ""
+
+    def test_build_log_record_shape_and_sanitization(self):
+        state = _valid_state()
+        state["question"] = "which one? password=hunter2 " + "y" * 600
+        output = {
+            "decision": "SELECT_OPTION",
+            "probabilities": {"option_a": 0.85},
+            "confidence": 0.9,
+            "human_preference_probability": 0.1,
+            "score_summary": {"option_a": {"fit": 1.0, "composite": 1.0}},
+            "model": "jev-test",
+        }
+        record = decide.build_log_record(state, output, 812)
+        assert set(record) == {
+            "timestamp",
+            "sanitized_question",
+            "option_ids",
+            "criteria_ids",
+            "score_summary",
+            "choice_probabilities",
+            "choice_confidence",
+            "human_preference_probability",
+            "resolution",
+            "model",
+            "latency_ms",
+        }
+        # "which one? " (11 chars) + "[REDACTED]" (10) + " " (1) = 22 chars,
+        # leaving 478 of the 600 "y" characters within the 500-char cap.
+        assert record["sanitized_question"] == "which one? [REDACTED] " + "y" * 478
+        assert "hunter2" not in record["sanitized_question"]
+        assert record["option_ids"] == ["option_a", "option_b"]
+        assert record["criteria_ids"] == ["fit"]
+        assert record["latency_ms"] == 812
+        assert record["resolution"] == "SELECT_OPTION"
+        assert isinstance(record["timestamp"], str)
+
+    def test_build_log_record_tolerates_partial_state(self):
+        record = decide.build_log_record({}, {"decision": "PROVIDER_UNAVAILABLE"}, None)
+        assert record["option_ids"] == []
+        assert record["criteria_ids"] == []
+        assert record["latency_ms"] is None
