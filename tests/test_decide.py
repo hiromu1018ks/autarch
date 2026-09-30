@@ -1,5 +1,9 @@
+import json
 import pytest
+import subprocess
+import sys
 import urllib.error
+from pathlib import Path
 
 import decide
 
@@ -839,3 +843,230 @@ class TestLogging:
         assert record["option_ids"] == []
         assert record["criteria_ids"] == []
         assert record["latency_ms"] is None
+
+
+class TestMain:
+    def _write_state(self, tmp_path, state):
+        state_file = tmp_path / "state.json"
+        state_file.write_text(
+            json.dumps(state, ensure_ascii=False), encoding="utf-8"
+        )
+        return state_file
+
+    def _patch_log(self, monkeypatch, tmp_path):
+        log_path = tmp_path / "decisions.jsonl"
+        monkeypatch.setattr(decide, "default_log_path", lambda: log_path)
+        return log_path
+
+    def _patch_api(self, monkeypatch, answers, status=200):
+        body = answers_body(answers) if answers is not None else b"garbage"
+        monkeypatch.setattr(
+            decide.urllib.request,
+            "urlopen",
+            lambda request, timeout=None: FakeResponse(body, status),
+        )
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+
+    def test_select_option_end_to_end(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+        log_path = self._patch_log(monkeypatch, tmp_path)
+        self._patch_api(monkeypatch, make_answers(state, choice="option_a",
+                                                  confidence=0.94))
+        exit_code = decide.main(
+            [f"--state-file={self._write_state(tmp_path, state)}"]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        output = json.loads(captured.out)
+        assert output["decision"] == "SELECT_OPTION"
+        assert output["selected_option"] == "option_a"
+        assert output["detail"] is None
+        assert output["model"] == "jev-latest"
+        assert "redacted" not in captured.err
+        log_lines = log_path.read_text(encoding="utf-8").strip().splitlines()
+        assert json.loads(log_lines[0])["resolution"] == "SELECT_OPTION"
+
+    def test_secret_redacted_before_sending(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+        state["evidence"] = ["uses key sk-abcdef1234567890"]
+        sent = {}
+
+        def capture_urlopen(request, timeout=None):
+            sent["body"] = request.data.decode("utf-8")
+            return FakeResponse(answers_body(make_answers(state)))
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", capture_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        captured = capsys.readouterr()
+        assert "redacted: 1 value(s)" in captured.err
+        assert "sk-abcdef1234567890" not in sent["body"]
+        assert "sk-abcdef1234567890" not in captured.out
+
+    def test_missing_api_key_is_provider_unavailable(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        state = _valid_state()
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        self._patch_log(monkeypatch, tmp_path)
+        exit_code = decide.main(
+            [f"--state-file={self._write_state(tmp_path, state)}"]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        output = json.loads(captured.out)
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["detail"] == "TYPESAFE_API_KEY is not set"
+
+    @pytest.mark.parametrize("status", [401, 422, 429, 500, 503])
+    def test_http_error_is_provider_unavailable(
+        self, tmp_path, monkeypatch, capsys, status
+    ):
+        state = _valid_state()
+        self._patch_api(monkeypatch, None, status=status)
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["detail"] == f"HTTP {status}"
+
+    def test_network_error_is_provider_unavailable(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        state = _valid_state()
+
+        def refuse(request, timeout=None):
+            raise urllib.error.URLError("connection refused")
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", refuse)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["detail"] == "transport failure: URLError"
+
+    def test_timeout_is_provider_unavailable(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+
+        def raise_timeout(request, timeout=None):
+            raise TimeoutError("timed out")
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", raise_timeout)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["detail"] == "transport failure: TimeoutError"
+
+    def test_malformed_response_is_provider_unavailable(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        state = _valid_state()
+        self._patch_api(monkeypatch, None)
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+
+    def test_invalid_state_is_insufficient_options(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        state = _valid_state()
+        state["alternatives"] = state["alternatives"][:1]
+        self._patch_log(monkeypatch, tmp_path)
+        exit_code = decide.main(
+            [f"--state-file={self._write_state(tmp_path, state)}"]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        output = json.loads(captured.out)
+        assert output["decision"] == "INSUFFICIENT_OPTIONS"
+        assert "2 to 5" in output["detail"]
+
+    def test_missing_state_file_exits_2(self, capsys):
+        assert decide.main(["--state-file=/nonexistent/state.json"]) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "cannot read state file" in captured.err
+
+    def test_malformed_state_json_exits_2(self, tmp_path, capsys):
+        state_file = tmp_path / "state.json"
+        state_file.write_text("{not json", encoding="utf-8")
+        assert decide.main([f"--state-file={state_file}"]) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "not valid JSON" in captured.err
+
+    def test_missing_required_argument_exits_2(self, capsys):
+        with pytest.raises(SystemExit) as excinfo:
+            decide.main([])
+        assert excinfo.value.code == 2
+        assert capsys.readouterr().out == ""
+
+    def test_main_cjk_end_to_end(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+        state["question"] = "認証方式はどちらが適切か"
+        state["alternatives"][0]["name"] = "案A"
+        state["alternatives"][0]["description"] = "同一オリジンのWebアプリ向け。"
+        sent = {}
+
+        def capture_urlopen(request, timeout=None):
+            sent["body"] = request.data.decode("utf-8")
+            return FakeResponse(answers_body(make_answers(state)))
+
+        monkeypatch.setattr(decide.urllib.request, "urlopen", capture_urlopen)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        self._patch_log(monkeypatch, tmp_path)
+        exit_code = decide.main(
+            [f"--state-file={self._write_state(tmp_path, state)}"]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "案A" in sent["body"]
+        output = json.loads(captured.out)
+        assert output["decision"] == "SELECT_OPTION"
+        assert output["selected_option"] == "option_a"
+
+    def test_main_survives_log_failure(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+        self._patch_api(monkeypatch, make_answers(state))
+        # A directory path cannot be opened for append.
+        monkeypatch.setattr(decide, "default_log_path", lambda: tmp_path)
+        exit_code = decide.main(
+            [f"--state-file={self._write_state(tmp_path, state)}"]
+        )
+        captured = capsys.readouterr()
+        assert exit_code == 0
+        assert "warning" in captured.err
+        output = json.loads(captured.out)
+        assert output["decision"] == "SELECT_OPTION"
+
+
+class TestCliContractViaSubprocess:
+    def test_missing_state_file_subprocess(self):
+        script = Path(decide.__file__)
+        result = subprocess.run(
+            [sys.executable, str(script), "--state-file", "/nonexistent"],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2
+        assert result.stdout == ""
+
+
+class TestDomainAgnostic:
+    def test_no_coding_vocabulary_in_source(self):
+        source = Path(decide.__file__).read_text(encoding="utf-8").lower()
+        for term in (
+            "package.json",
+            "sqlite",
+            "postgres",
+            "jwt",
+            "repository",
+            "database",
+            "authentication",
+        ):
+            assert term not in source, term

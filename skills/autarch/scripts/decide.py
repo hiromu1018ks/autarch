@@ -6,10 +6,12 @@ and returns a deterministic resolution. Domain-agnostic by design: this
 module knows about decisions, not about any particular field.
 """
 
+import argparse
 import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -522,3 +524,112 @@ def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
         "model": output.get("model"),
         "latency_ms": latency_ms,
     }
+
+
+def _empty_resolution(decision: str, rule: str) -> dict:
+    return {
+        "decision": decision,
+        "rule": rule,
+        "selected_option": None,
+        "confidence": None,
+        "probability": None,
+        "probabilities": None,
+        "human_preference_probability": None,
+        "score_summary": None,
+        "reason": "",
+    }
+
+
+def _resolution_output(
+    resolution: dict, model: str, detail: str | None = None
+) -> dict:
+    output = dict(resolution)
+    output["detail"] = detail
+    output["model"] = model
+    return output
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="decide.py",
+        description="Evaluate a decision state with Jev and print a resolution.",
+    )
+    parser.add_argument("--state-file", required=True)
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--auto-select", type=float, default=DEFAULT_AUTO_SELECT)
+    parser.add_argument("--review", type=float, default=DEFAULT_REVIEW)
+    parser.add_argument("--min-gap", type=float, default=DEFAULT_MIN_GAP)
+    parser.add_argument(
+        "--human-preference", type=float, default=DEFAULT_HUMAN_PREFERENCE
+    )
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
+    args = parser.parse_args(argv)
+
+    try:
+        raw_state = Path(args.state_file).read_text(encoding="utf-8")
+    except OSError as error:
+        print(
+            f"error: cannot read state file: {type(error).__name__}",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        state = json.loads(raw_state)
+    except json.JSONDecodeError as error:
+        print(
+            f"error: state file is not valid JSON: {error.msg}", file=sys.stderr
+        )
+        return 2
+
+    thresholds = {
+        "auto_select": args.auto_select,
+        "review": args.review,
+        "min_gap": args.min_gap,
+        "human_preference": args.human_preference,
+    }
+
+    errors = validate_state(state)
+    if errors:
+        resolution = _empty_resolution("INSUFFICIENT_OPTIONS", "invalid_state")
+        output = _resolution_output(resolution, args.model, detail="; ".join(errors))
+        print(json.dumps(output, ensure_ascii=False))
+        append_log(build_log_record(state, output, None))
+        return 0
+
+    latency_ms = None
+    try:
+        api_key = os.environ.get("TYPESAFE_API_KEY", "").strip()
+        if not api_key:
+            raise ProviderError("TYPESAFE_API_KEY is not set")
+        redacted_state, redaction_count = redact(state)
+        if redaction_count:
+            print(f"redacted: {redaction_count} value(s)", file=sys.stderr)
+        payload = build_request(redacted_state, args.model)
+        started = time.perf_counter()
+        try:
+            status, body = send_request(payload, args.endpoint, args.timeout)
+        except OSError as error:
+            raise ProviderError(
+                f"transport failure: {type(error).__name__}"
+            ) from None
+        latency_ms = round((time.perf_counter() - started) * 1000)
+        if not 200 <= status < 300:
+            raise ProviderError(f"HTTP {status}")
+        parsed = parse_answers(body, redacted_state)
+        resolution = resolve(redacted_state, parsed, thresholds)
+    except ProviderError as error:
+        empty = _empty_resolution("PROVIDER_UNAVAILABLE", "provider_error")
+        output = _resolution_output(empty, args.model, detail=str(error))
+        print(json.dumps(output, ensure_ascii=False))
+        append_log(build_log_record(state, output, latency_ms))
+        return 0
+
+    output = _resolution_output(resolution, args.model)
+    print(json.dumps(output, ensure_ascii=False))
+    append_log(build_log_record(state, output, latency_ms))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
