@@ -1,6 +1,8 @@
 """Validate captured evaluations and replay policies through the decision engine."""
 
 import math
+from datetime import datetime, timezone
+import re
 from pathlib import Path
 import sys
 
@@ -380,11 +382,30 @@ def _read_runs(path):
     return records
 
 
+def _timestamp(value, label):
+    if not isinstance(value, str) or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})", value):
+        raise ValueError(f"{label} must be a timezone-aware RFC 3339 datetime")
+    try:
+        result = datetime.fromisoformat(value.upper().replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError(f"invalid {label}") from None
+    if result > datetime.now(timezone.utc):
+        raise ValueError(f"{label} must not be in the future")
+    return result
+
+
+def _check_execution_times(runs, frozen_at):
+    for run in runs:
+        if _timestamp(run.get("recorded_at"), "run.recorded_at") <= frozen_at:
+            raise ValueError("execution must occur after frozen_at")
+
+
 def load_validation_manifest(path):
     """Load the frozen five topic pairs, checking file identity and local paths.
 
     Entries use paths relative to the manifest (in the case directory's metadata
-    subdirectory), with id/topic/pair_id/sha256. Task 7 owns the freeze metadata.
+    subdirectory), with id/topic/pair_id/sha256 and a valid freeze timestamp.
     """
     import case_schema
     path = Path(path).resolve()
@@ -393,6 +414,7 @@ def load_validation_manifest(path):
             or manifest["schema_version"] != 1 or not isinstance(manifest.get("cases"), list)
             or len(manifest["cases"]) != 10):
         raise ValueError("manifest must declare schema_version 1 and ten cases")
+    _timestamp(manifest.get("frozen_at"), "manifest.frozen_at")
     cases, seen, pairs = [], set(), {}
     case_root = path.parent.parent
     for entry in manifest["cases"]:
@@ -504,6 +526,12 @@ def _validate_selected_policy(policy):
     if (not isinstance(policy, dict) or type(policy.get("schema_version")) is not int
             or policy["schema_version"] != 1):
         raise ValueError("unsupported selected policy schema")
+    frozen_at = _timestamp(policy.get("frozen_at"), "policy.frozen_at")
+    metadata = policy.get("metadata")
+    if not isinstance(metadata, dict) or not isinstance(metadata.get("recorded_at"), list) or not metadata["recorded_at"]:
+        raise ValueError("selected policy requires training execution timestamps")
+    if any(_timestamp(stamp, "training.recorded_at") >= frozen_at for stamp in metadata["recorded_at"]):
+        raise ValueError("policy.frozen_at must follow training execution")
     settings = {"thresholds": policy.get("thresholds"), "gate_order": policy.get("gate_order")}
     _validate_thresholds(settings["thresholds"])
     _validate_order(settings["gate_order"])
@@ -570,6 +598,8 @@ def main(argv=None):
         validation_cases = load_validation_manifest(args.manifest)
         runs = _read_runs(args.runs_file)
         manifest_hash = _file_hash(args.manifest)
+        manifest_frozen_at = _timestamp(_read_json(args.manifest)["frozen_at"], "manifest.frozen_at")
+        _check_execution_times(runs, manifest_frozen_at)
         if args.command == "search":
             cases = case_schema.load_cases(args.cases_dir)
             loops = case_schema.load_loop_cases(args.loop_cases_dir)
@@ -593,7 +623,7 @@ def main(argv=None):
                 raise ValueError("search requires three valid reference runs per case phase")
             reasons = _training_reasons(reference, candidate)
             case_hashes = {case["id"]: _json_hash(case) for case in training_cases}
-            policy = {"schema_version": 1, "thresholds": candidate["thresholds"], "gate_order": candidate["gate_order"],
+            policy = {"schema_version": 1, "frozen_at": datetime.now(timezone.utc).isoformat(), "thresholds": candidate["thresholds"], "gate_order": candidate["gate_order"],
                       "training": {"reference": reference, "candidate": candidate,
                                    "adoption": {"accepted": not reasons, "reasons": reasons}},
                       "training_case_hash": _json_hash(case_hashes), "training_runs_hash": _file_hash(args.runs_file),
@@ -606,6 +636,10 @@ def main(argv=None):
         settings = _validate_selected_policy(policy)
         if policy["manifest_hash"] != manifest_hash:
             raise ValueError("manifest differs from the frozen selected policy")
+        policy_frozen_at = _timestamp(policy["frozen_at"], "policy.frozen_at")
+        if policy_frozen_at <= manifest_frozen_at:
+            raise ValueError("policy.frozen_at must follow manifest.frozen_at")
+        _check_execution_times(runs, policy_frozen_at)
         indexed = _index_runs(validation_cases, runs, settings)
         summary = _policy_summary(validation_cases, indexed, settings)
         training = policy["training"]

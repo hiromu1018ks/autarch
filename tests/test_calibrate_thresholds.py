@@ -191,9 +191,10 @@ def calibration_case(case_id, situation="constraint_clear", derived=None):
 
 
 def captured_runs(case, sufficiency=0.9, confidence=0.95, blocker_confidence=0.9, noul=0.1):
+    from datetime import datetime, timezone
     snapshot = snapshot_for(case["state"], sufficiency=sufficiency, confidence=confidence,
                             blocker_confidence=blocker_confidence, noul=noul)
-    return [{"case_id": case["id"], "run_index": index,
+    return [{"case_id": case["id"], "run_index": index, "recorded_at": datetime.now(timezone.utc).isoformat(),
              "resolution": {**replay(case["state"], snapshot), "evaluation_snapshot": snapshot}}
             for index in (1, 2, 3)]
 
@@ -365,7 +366,7 @@ def cli_fixture(tmp_path):
                                 noul=0.9 if case["situation"] == "preference_needed" else 0.1)
             for index in (1, 2, 3):
                 runs.append({"case_id": case["id"], "phase": phase, "run_index": index,
-                             "recorded_at": "2026-10-01T00:00:00Z",
+                             "recorded_at": "2020-01-01T00:00:01Z",
                              "resolution": {"decision": "ASK_USER", "model": "fixture", "evaluation_snapshot": copy.deepcopy(snap)}})
     training = tmp_path / "training.jsonl"
     training.write_text("".join(json.dumps(run) + "\n" for run in runs))
@@ -385,7 +386,7 @@ def cli_fixture(tmp_path):
                             "path": "../" + path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
             validation_cases.append(case)
     manifest = metadata / "manifest.json"
-    manifest.write_text(json.dumps({"schema_version": 1, "frozen_at": "2026-10-01T00:00:00Z", "cases": entries}))
+    manifest.write_text(json.dumps({"schema_version": 1, "frozen_at": "2020-01-01T00:00:00Z", "cases": entries}))
     return root, training, manifest, validation_cases
 
 
@@ -648,3 +649,71 @@ def test_validate_returns_input_error_for_nonstring_case_id(tmp_path, frozen_cal
     assert cal.main(["validate", "--policy-file", str(policy_file), "--manifest", str(manifest),
                      "--runs-file", str(runs), "--out-dir", str(out)]) == 2
     assert not out.exists()
+
+import calibrate_thresholds as cal
+
+@pytest.mark.parametrize("timestamp", [None, "", "yesterday", "2020-01-01", "2020-01-01T00:00:00", "2020-02-30T00:00:00Z", "2999-01-01T00:00:00Z"])
+def test_manifest_requires_valid_past_freeze_timestamp(tmp_path, timestamp):
+    import json
+    _, _, manifest, _ = cli_fixture(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["frozen_at"] = timestamp
+    manifest.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match="frozen_at"):
+        cal.load_validation_manifest(manifest)
+
+
+@pytest.mark.parametrize("timestamp", [None, "2020-01-01T00:00:00Z", "2019-12-31T23:59:59Z", "2020-01-01T00:00:00"])
+def test_search_rejects_training_execution_before_manifest_freeze(tmp_path, timestamp):
+    import json
+    root, training, manifest, _ = cli_fixture(tmp_path)
+    runs = [json.loads(line) for line in training.read_text().splitlines()]
+    runs[0]["recorded_at"] = timestamp
+    training.write_text("".join(json.dumps(run) + "\n" for run in runs))
+    out = tmp_path / "search"
+    assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
+                     "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 2
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("change", ["before_manifest", "before_policy", "missing_time", "manifest_tamper", "case_tamper", "wrong_policy", "two_valid"])
+def test_validate_enforces_frozen_evidence_boundary(tmp_path, frozen_calibration_policy, change):
+    import json
+    import shutil
+    policy, original_manifest, cases = frozen_calibration_policy
+    policy = copy.deepcopy(policy)
+    shutil.copytree(original_manifest.parent.parent, tmp_path / "cases")
+    manifest = tmp_path / "cases" / "metadata" / "manifest.json"
+    runs = []
+    for case in cases:
+        for run in captured_runs(case, 0.2 if case["situation"] == "info_missing" else 0.98):
+            run["resolution"]["evaluation_snapshot"].update(thresholds=policy["thresholds"], gate_order=policy["gate_order"])
+            runs.append(run)
+    if change == "before_manifest": runs[0]["recorded_at"] = "2019-12-31T23:59:59Z"
+    elif change == "before_policy": runs[0]["recorded_at"] = policy.get("frozen_at", "2020-01-01T00:00:01Z")
+    elif change == "missing_time": runs[0].pop("recorded_at")
+    elif change == "manifest_tamper": manifest.write_text(manifest.read_text() + " ")
+    elif change == "case_tamper":
+        data = json.loads(manifest.read_text())
+        case_file = manifest.parent / data["cases"][0]["path"]
+        case_file.write_text(case_file.read_text() + " ")
+    elif change == "wrong_policy": policy["thresholds"]["auto_select"] = 0.95
+    else: runs.pop()
+    policy_file, runs_file, out = tmp_path / "policy.json", tmp_path / "runs.jsonl", tmp_path / "report"
+    policy_file.write_text(json.dumps(policy))
+    runs_file.write_text("".join(json.dumps(run) + "\n" for run in runs))
+    status = cal.main(["validate", "--policy-file", str(policy_file), "--manifest", str(manifest),
+                       "--runs-file", str(runs_file), "--out-dir", str(out)])
+    assert status == (1 if change == "two_valid" else 2)
+    if change == "two_valid":
+        result = json.loads((out / "adoption.json").read_text())
+        assert not result["accepted"]
+    else: assert not out.exists()
+
+
+@pytest.mark.parametrize("timestamp", [None, "invalid", "2999-01-01T00:00:00Z", "2019-01-01T00:00:00Z"])
+def test_policy_requires_freeze_after_training(frozen_calibration_policy, timestamp):
+    policy = copy.deepcopy(frozen_calibration_policy[0])
+    policy["frozen_at"] = timestamp
+    with pytest.raises(ValueError, match="frozen_at|training"):
+        cal._validate_selected_policy(policy)
