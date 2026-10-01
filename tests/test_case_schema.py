@@ -247,6 +247,13 @@ class TestValidateLoopCase:
         assert any("phase2.acceptable_decisions" in e
                    for e in case_schema.validate_loop_case(case))
 
+    def test_phase2_unhashable_decision_entries_return_errors_not_crash(self):
+        case = valid_loop_case()
+        case["investigation"]["phase2"]["acceptable_decisions"] = [{"a": 1}]
+        errors = case_schema.validate_loop_case(case)
+        assert any("phase2" in e or "acceptable_decisions" in e
+                   for e in errors)
+
     def test_phase2_selections_reference_unknown_ids_rejected(self):
         case = valid_loop_case()
         case["investigation"]["phase2"]["acceptable_selections"] = ["redis"]

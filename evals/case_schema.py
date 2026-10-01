@@ -173,9 +173,10 @@ def validate_loop_case(case):
         else:
             errors.extend(_validate_expectations(phase2, alternative_ids))
             decisions = phase2.get("acceptable_decisions")
-            if isinstance(decisions, list) and not (
-                    set(decisions)
-                    & {"SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"}
+            if (not isinstance(decisions, list)
+                    or not all(isinstance(d, str) for d in decisions)
+                    or not (set(decisions)
+                            & {"SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"})
             ):
                 errors.append(
                     "phase2.acceptable_decisions must include a selection decision"
