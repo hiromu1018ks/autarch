@@ -73,3 +73,20 @@ validateはexit1、[adoption.json](validation-report/adoption.json)はaccepted=f
 失敗3件のconfidenceは1.0、sufficiencyは0.67/0.66/0.68、blockerはfacts_missing、blocker_confidenceは0.95。sufficiencyが選択閾値0.60以上なのでゲートが発火しなかった。この観測から再探索、ケース変更、閾値調整は行っていない。
 
 生記録のpolicy/manifest/runsのhashと時刻はvalidateで一致を確認した。旧search、修正後search-feasible、validation、validation-reportを同じresult rootに保存する。全体試験は再度592 passed / 3 skipped（13.87秒）、git diff --checkも成功した。少数ケースの不成立を報告し、Task8へは既定値を変更しない方針を渡す。
+
+## 最終原評価を取得し、既存の応答処理バグを修正待ちにした
+
+Task8の[比較記録](final/baseline.json)と[原評価の留保・5シナリオ手動確認](final/notes.md)を保存した。
+既定値は変更していない。既存23ケース＋3loop各3回の87位相は欠測・障害0。
+unsafe8/69は第1拡張の7/69より1件増えた回帰観測である。
+差はdeploy_preference_needed run2のhuman_preference ASKから慎重選択への変更。
+全入力legacyで新除外保証は使わず、同設定の学習用unsafe12/69の揺れとは区別した。
+loopはdb3/3、auth/deploy0/3のまま。独立条件は[21/21組pass](final-constraints/constraint_summary.json)、27位相。
+
+sonnet full-flowは全5件記録し、ok3・unavailable2・failed0。
+機械判定decision_okは評価可能3件中2件、全予定5件中では2件を観測した。
+unavailableは認証のScore回答処理停止と依存関係のHTTP520で原因が異なる。
+認証は合法criterion IDのcredential文字列が派生Score回答キーの伏せ字に引っかかる
+既存bugを正しい合成応答でオフライン再現した。原結果を保全し、独立TDD修正とreview後に
+影響シナリオだけ別ディレクトリで再実行する。dependencyの追加実行は行わない。
+最終統合・完了判断はこの修正と最終レビュー後に扱う。

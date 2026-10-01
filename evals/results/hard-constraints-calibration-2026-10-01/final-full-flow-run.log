@@ -1,0 +1,6 @@
+authentication: unavailable (provider unavailable: score__credential_and_session_security__server_session_cookie answer is missing or has wrong type)
+database: ok
+dependency: unavailable (provider unavailable: HTTP 520)
+deployment: ok
+test_framework: ok
+evals/results/hard-constraints-calibration-2026-10-01/final

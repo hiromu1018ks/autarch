@@ -1,0 +1,138 @@
+{
+  "goal": "Deploy the status-page web service so its status endpoint is reliably available, choosing a hosting approach the one-person team can sustain without an on-call rotation.",
+  "question": "Select the deployment target for the status-page container service that best matches the team's operating capacity (one maintainer, no on-call rotation) and its stated budget, which accommodates either a managed platform or a small virtual server.",
+  "known_constraints": [
+    "The service is a small containerized status web service (README.md).",
+    "The team can afford either a managed platform or a small virtual server, so both cost profiles are within budget (README.md).",
+    "One person can handle server upkeep, but there is no on-call rotation (README.md).",
+    "The team has no strong preference between managed and self-managed hosting yet (README.md).",
+    "The app is a single-file Python standard-library HTTP server bound to 0.0.0.0:8080 that answers every GET with 200 'status: ok' (app.py:6-14).",
+    "The service is stateless with no third-party dependencies: the container image is python:3.12-slim with only app.py copied in and no dependency installation step (Dockerfile:1-3, app.py).",
+    "The repository contains no existing deployment manifests, CI configuration, or platform-specific configuration (repository listing, checked 2026-10-01)."
+  ],
+  "environment": {
+    "service_type": "single-endpoint HTTP status service",
+    "language_runtime": "Python 3.12 (python:3.12-slim container image)",
+    "containerized": true,
+    "external_dependencies": "none",
+    "statefulness": "stateless",
+    "existing_deployment_config": "none",
+    "team_capacity": "one maintainer, no on-call rotation"
+  },
+  "evidence": [
+    "The service is described as 'a small containerized status web service' and the team 'can afford either a managed platform or a small virtual server' (README.md).",
+    "'One person can handle server upkeep, but there is no on-call rotation and no strong preference yet' (README.md).",
+    "The app is a single-file Python standard-library HTTP server bound to 0.0.0.0:8080 that answers every GET with 200 'status: ok' (app.py:6-14).",
+    "The container image is python:3.12-slim with only app.py copied in and no dependency installation step, so the service has no third-party dependencies and no persistent state (Dockerfile:1-3, app.py).",
+    "The listen port 8080 is hardcoded in app.py rather than read from an environment variable (app.py:14).",
+    "The repository contains only Dockerfile, README.md, app.py, and .claude/ — no deployment manifests, CI workflows, or platform configuration (repository listing, checked 2026-10-01)."
+  ],
+  "alternatives": [
+    {
+      "id": "managed_paas",
+      "name": "Managed platform (PaaS / managed container hosting)",
+      "description": "Push the existing container image to a managed container platform where the vendor operates the underlying VM, OS patching, TLS termination, and process restarts.",
+      "advantages": [
+        "Ongoing upkeep such as OS patching, certificate renewal, and process restarts is handled by the platform, which fits a single maintainer with no on-call rotation.",
+        "Deployments and rollbacks are a container image push, matching the existing Dockerfile workflow.",
+        "Platform health checks and automatic restarts keep the page available without manual intervention."
+      ],
+      "disadvantages": [
+        "Recurring platform cost is typically higher than a raw small virtual server, although the README states the team can afford a managed platform.",
+        "Less control over the runtime environment, network layout, and debugging access than a server the team operates.",
+        "Some platform-specific configuration (environment, routing, port conventions) must be written and maintained."
+      ],
+      "assumptions": [
+        "A managed tier exists that can run a plain HTTP container and remains within the budget the README describes as affordable."
+      ]
+    },
+    {
+      "id": "self_managed_vps",
+      "name": "Self-managed small virtual server",
+      "description": "Rent a small virtual server, run the existing container on it with Docker behind a reverse proxy, and have the team handle patching, TLS, monitoring, and restarts itself.",
+      "advantages": [
+        "Lowest direct recurring cost of the options, and the README confirms the team can afford a small virtual server.",
+        "Full control over the operating system, network, and debugging environment, with no platform-specific configuration.",
+        "The container image is already portable, so the existing Dockerfile runs unchanged on any VM."
+      ],
+      "disadvantages": [
+        "All upkeep — OS patching, certificate renewal, monitoring, and failure recovery — falls on one person with no on-call rotation.",
+        "Automatic recovery after a crash or host reboot must be built and maintained by the team, for example restart policies and a boot-started container runtime.",
+        "If the server is down, the status page is down with it, which undercuts the service's purpose unless extra redundancy is built."
+      ],
+      "assumptions": [
+        "The single maintainer can sustain periodic patching and incident response without an on-call rotation."
+      ]
+    },
+    {
+      "id": "serverless_container",
+      "name": "Managed serverless container runtime (scale-to-zero)",
+      "description": "Deploy the container to a request-based managed runtime that scales to zero when idle and bills per request, with the platform handling TLS and scaling.",
+      "advantages": [
+        "No server or OS upkeep at all, which fits a single maintainer with no on-call rotation.",
+        "Cost tracks request volume, so very light traffic is inexpensive.",
+        "TLS termination and host-level redundancy are handled by the platform."
+      ],
+      "disadvantages": [
+        "A status page is polled continuously, so it rarely scales to zero and cold starts can delay the first response during exactly the incidents the page exists for.",
+        "The hardcoded port 8080 in app.py may need a small change to honor the platform's port convention.",
+        "Per-request billing is less predictable than a flat server cost if polling frequency changes."
+      ],
+      "assumptions": [
+        "The platform can run a generic container that listens on a TCP port without code changes beyond the port setting."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "operational_burden",
+      "name": "Ongoing operational burden",
+      "weight": 0.3,
+      "rubric": [
+        "Heavy: regular patching, certificate renewal, and incident response land on the team, which has no on-call rotation",
+        "Moderate: most upkeep is automated but the team must build and maintain that automation itself",
+        "Light: routine upkeep is handled by the provider and the team only ships application updates"
+      ]
+    },
+    {
+      "id": "availability_recovery",
+      "name": "Unattended availability and recovery",
+      "weight": 0.3,
+      "rubric": [
+        "Poor: a single failure takes the page down until a person intervenes, and the page shares fate with the host it runs on",
+        "Fair: common failures recover automatically, but host-level events such as reboots or kernel patching need manual action",
+        "Good: the platform restarts and heals the service automatically and host failures are the provider's responsibility"
+      ]
+    },
+    {
+      "id": "cost_affordability",
+      "name": "Cost fit within the stated budget",
+      "weight": 0.15,
+      "rubric": [
+        "Poor: recurring cost is above what the team stated it can afford or is hard to predict",
+        "Acceptable: cost is within the stated budget but higher than the cheapest option",
+        "Excellent: cost is within the stated budget and at or near the lowest of the options"
+      ]
+    },
+    {
+      "id": "rollout_simplicity",
+      "name": "Rollout and update simplicity",
+      "weight": 0.15,
+      "rubric": [
+        "Poor: deployment needs substantial new infrastructure or code changes",
+        "Acceptable: deployment uses the existing container with minor configuration or a small code change",
+        "Excellent: the existing container deploys and updates with a push and no code changes"
+      ]
+    },
+    {
+      "id": "operational_control",
+      "name": "Operational control and debuggability",
+      "weight": 0.1,
+      "rubric": [
+        "Low: runtime, network, and debugging are opaque and constrained by the provider",
+        "Moderate: useful logs and environment configuration with some provider constraints",
+        "Full: complete control over OS, network, and debugging access"
+      ]
+    }
+  ]
+}

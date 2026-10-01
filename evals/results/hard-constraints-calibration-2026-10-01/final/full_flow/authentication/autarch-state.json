@@ -1,0 +1,145 @@
+{
+  "goal": "Adopt an authentication state strategy for admin-panel so that sign-in works securely for the five-person internal team that uses it.",
+  "question": "Select the authentication state strategy that best matches admin-panel as it exists today (internal five-person team, single-origin server-rendered app with no external API consumers, Python standard-library implementation, no auth logic yet), while remaining workable if the undecided mobile-app roadmap item is later pursued.",
+  "known_constraints": [
+    "The app is an internal admin panel for a five-person team (README.md).",
+    "The app is server-rendered by its own web server and served from a single origin (README.md).",
+    "There are no external API consumers today (README.md).",
+    "The product roadmap mentions a possible mobile app, but nothing has been decided (README.md).",
+    "The implementation is stdlib-only Python on http.server; authentication is not implemented yet beyond a placeholder sign-in form (app.py)."
+  ],
+  "environment": {
+    "language": "Python 3, standard library only",
+    "web_framework": "http.server BaseHTTPRequestHandler / HTTPServer",
+    "app_type": "server-rendered internal admin panel",
+    "team_size": "5 people",
+    "origin_model": "single origin, no external API consumers",
+    "auth_status": "placeholder sign-in form only, no session or token logic implemented",
+    "server_binding": "127.0.0.1:8080",
+    "dependency_files": "none (repository contains only app.py, README.md, and .claude/)"
+  },
+  "evidence": [
+    "admin-panel is described as an internal admin panel for a five-person team (README.md).",
+    "The app is server-rendered by its own web server and served from a single origin (README.md).",
+    "There are no external API consumers today (README.md).",
+    "A possible mobile app appears on the product roadmap but nothing has been decided (README.md).",
+    "The server is minimal Python standard-library code using http.server, self-described as 'stdlib only' (app.py docstring and imports).",
+    "Authentication is not implemented yet; the page contains only a placeholder sign-in form (app.py PAGE constant).",
+    "The server currently binds to 127.0.0.1:8080 (app.py __main__ block).",
+    "No requirements.txt, package.json, or other dependency manifest exists in the repository (repository listing)."
+  ],
+  "alternatives": [
+    {
+      "id": "server_session_cookie",
+      "name": "Server-Side Session Cookie",
+      "description": "Issue a random opaque session ID in an HttpOnly cookie at sign-in and keep session state (user, expiry) in server-side storage such as process memory or a table.",
+      "advantages": [
+        "The cookie carries only an opaque identifier, so no credential or claim data is exposed to the client.",
+        "The browser sends an HttpOnly cookie automatically on same-origin requests, which matches the current form-based, server-rendered flow.",
+        "Sessions can be expired or revoked immediately by deleting server-side state.",
+        "Can be implemented with the Python standard library (secrets, hmac, http.cookies) without adding dependencies."
+      ],
+      "disadvantages": [
+        "Requires server-side session storage and cleanup of expired sessions.",
+        "Every request needs a session lookup, which couples the app to that state store if it is ever scaled horizontally.",
+        "A native mobile client would need a cookie-capable HTTP stack to reuse the same authentication."
+      ],
+      "assumptions": [
+        "A single server process can hold session state for the five-person team.",
+        "Credentials are verified at sign-in and the app is served over TLS in production."
+      ]
+    },
+    {
+      "id": "stateless_jwt_bearer",
+      "name": "Stateless JWT Bearer Token",
+      "description": "Issue a signed, self-contained JWT at sign-in and verify its signature and expiry on each request without any server-side session store.",
+      "advantages": [
+        "No server-side session store is needed; each request is verified from the token itself.",
+        "The bearer-token model can be reused unchanged by native mobile or external API clients.",
+        "Standard claims such as exp carry expiry without any lookup."
+      ],
+      "disadvantages": [
+        "Revoking a token before it expires requires an additional denylist, which reintroduces server-side state.",
+        "Signature verification and claim validation are more error-prone to hand-roll on the standard library, and a JWT library would add a dependency.",
+        "Token claims are readable by anyone who obtains the token unless it is also encrypted."
+      ],
+      "assumptions": [
+        "A signing secret or key pair is configured outside the source tree.",
+        "Short token lifetimes, or a denylist for admin sessions, are acceptable."
+      ]
+    },
+    {
+      "id": "http_basic_per_request",
+      "name": "HTTP Basic Auth Per Request",
+      "description": "Have the browser send Base64-encoded credentials in an Authorization header on every request and verify them against the team member list, with no session or token state at all.",
+      "advantages": [
+        "No session state, tokens, or cookies need to be created or stored.",
+        "The browser's built-in credential prompt avoids building and maintaining sign-in pages.",
+        "Requires only a small amount of standard-library code to decode and check the header."
+      ],
+      "disadvantages": [
+        "Credentials are re-transmitted on every request, and there is no logout beyond closing the browser.",
+        "No built-in expiry, lockout, or per-session revocation, which limits lifecycle control for an admin panel.",
+        "Errors such as account lockout or rate limiting must be implemented from scratch."
+      ],
+      "assumptions": [
+        "The app is always served over TLS so that repeated credential transmission is protected.",
+        "The five team members' credentials can be verified server-side with an appropriate password hash store."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "credential_and_session_security",
+      "name": "Credential and session security",
+      "weight": 0.3,
+      "rubric": [
+        "Credentials or session material are exposed to the client with no expiry or revocation path",
+        "Session material is protected and expires, but cannot be revoked before expiry",
+        "Session material is opaque, HttpOnly, expiring, and can be revoked immediately by the server"
+      ]
+    },
+    {
+      "id": "current_architecture_fit",
+      "name": "Fit with the current single-origin server-rendered app",
+      "weight": 0.25,
+      "rubric": [
+        "Requires changing the app's architecture or adding a new client contract",
+        "Works for the same-origin browser flow but with notable friction",
+        "Natural fit for same-origin browser requests with no added client contract"
+      ]
+    },
+    {
+      "id": "implementation_simplicity",
+      "name": "Implementation simplicity with the standard library",
+      "weight": 0.2,
+      "rubric": [
+        "Requires new dependencies or hand-rolled cryptographic verification",
+        "Feasible on the standard library but with a moderate amount of custom security code",
+        "A small amount of straightforward standard-library code"
+      ]
+    },
+    {
+      "id": "future_client_flexibility",
+      "name": "Flexibility if a mobile app is later added",
+      "weight": 0.15,
+      "rubric": [
+        "The strategy would have to be replaced entirely for a new client type",
+        "Usable by a new client type after modest adaptation",
+        "Works unchanged for both browser and native clients"
+      ]
+    },
+    {
+      "id": "session_lifecycle_control",
+      "name": "Logout, expiry, and revocation control",
+      "weight": 0.1,
+      "rubric": [
+        "No logout, expiry, or revocation support",
+        "Expiry is supported but immediate revocation is not",
+        "Immediate revocation and expiry are both supported"
+      ]
+    }
+  ],
+  "hard_constraints": [],
+  "evidence_records": []
+}

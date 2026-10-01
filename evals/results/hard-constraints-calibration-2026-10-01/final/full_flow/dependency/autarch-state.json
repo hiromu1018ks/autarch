@@ -1,0 +1,135 @@
+{
+  "goal": "Keep csv-report a reliable internal tool that turns the weekly CSV export into a summary report, choosing the CSV processing approach that fits its deployment and maintenance reality.",
+  "question": "Select the CSV processing approach for csv-report that best fits its current role as a single-script internal tool producing a weekly summary report from the CSV export: keep the standard-library implementation or add a data-handling dependency.",
+  "known_constraints": [
+    "The tool runs as a single script on the analyst's laptop (README.md).",
+    "Nobody has measured how large the weekly files get; sizes vary a lot between weeks (README.md).",
+    "The script currently processes the CSV with only the Python standard library csv module (process.py:1-12).",
+    "The repository has no dependency manifest and no tests (repository listing, checked 2026-10-01)."
+  ],
+  "environment": {
+    "language": "Python 3, standard library only",
+    "files": ["README.md", "process.py"],
+    "dependency_manifests": [],
+    "tests": [],
+    "ci": [],
+    "git_repository": false,
+    "deployment": "single script run on the analyst's laptop",
+    "current_behavior": "reads export.csv from the working directory and prints the row count"
+  },
+  "evidence": [
+    "process.py imports only csv from the standard library; summarize() counts rows with a generator expression, so it streams input with roughly constant memory (process.py:1-12).",
+    "The module docstring records the current intent: 'Turn the weekly CSV export into a summary report (stdlib only today).' (process.py:1)",
+    "README describes the tool as internal, run as a single script on the analyst's laptop, and states that nobody has measured how large the weekly files get while sizes vary a lot between weeks (README.md:1-5).",
+    "The repository contains exactly README.md and process.py plus a .claude skills directory; there is no pyproject.toml, requirements.txt, setup.py, lock file, test suite, or CI configuration (repository listing, checked 2026-10-01)."
+  ],
+  "alternatives": [
+    {
+      "id": "keep_stdlib_csv",
+      "name": "Keep Standard Library csv Only",
+      "description": "Continue processing the weekly CSV with Python's built-in csv module and add no dependency.",
+      "advantages": [
+        "Runs on any machine with Python installed and no install step, matching the single-script deployment on the analyst's laptop.",
+        "The current implementation streams rows with a generator, so memory use stays bounded regardless of file size.",
+        "No packages to pin, upgrade, or track for security advisories."
+      ],
+      "disadvantages": [
+        "Any aggregation beyond simple iteration, such as grouping, joins, or column typing, must be hand-written.",
+        "A row count offers little headroom if the weekly report is expected to grow into richer summaries."
+      ],
+      "assumptions": [
+        "The report's required output stays close to simple per-file summaries.",
+        "Weekly files are read once per run and fit on the analyst's disk."
+      ]
+    },
+    {
+      "id": "add_data_library",
+      "name": "Add a Data-Handling Dependency (pandas or polars)",
+      "description": "Introduce a data-handling library such as pandas or polars and perform the CSV summarization through it.",
+      "advantages": [
+        "Group-by, filtering, joins, and column typing are available immediately if the report grows.",
+        "Columnar engines can process large files faster than hand-written row loops."
+      ],
+      "disadvantages": [
+        "Requires installing and managing packages on the analyst's laptop, where no environment is currently managed because no manifest exists.",
+        "Adds a large dependency surface, including transitive packages and upgrade and security tracking, to a small script.",
+        "pandas loads the whole frame into memory by default, which is untested against the unmeasured and highly variable weekly file sizes."
+      ],
+      "assumptions": [
+        "The analyst can install and maintain Python packages on the laptop.",
+        "Future summaries will need operations that csv plus plain Python handles poorly."
+      ]
+    },
+    {
+      "id": "measure_then_decide",
+      "name": "Keep stdlib csv Now and Measure File Sizes First",
+      "description": "Keep the standard-library implementation and record weekly file sizes and runtimes for a few cycles, then revisit the dependency question with data.",
+      "advantages": [
+        "Resolves the documented unknown that nobody has measured how large the weekly files get.",
+        "Avoids installing a dependency until a concrete need is demonstrated."
+      ],
+      "disadvantages": [
+        "Delays any richer reporting capability until the measurement period ends.",
+        "Requires a small process change to log sizes and timings and the discipline to collect data over several weeks."
+      ],
+      "assumptions": [
+        "Weekly cycles continue long enough to collect representative samples.",
+        "The current row-count output remains sufficient during the measurement period."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "requirement_fit",
+      "name": "Requirement fit",
+      "weight": 0.25,
+      "rubric": [
+        "Blocks or complicates the current weekly summary report",
+        "Neutral for the current weekly summary report",
+        "Serves the current weekly summary report directly with no extra machinery"
+      ]
+    },
+    {
+      "id": "maintenance_burden",
+      "name": "Maintenance burden",
+      "weight": 0.2,
+      "rubric": [
+        "Adds a dependency surface to pin, upgrade, and monitor",
+        "Adds minor recurring upkeep",
+        "No new dependency surface beyond the existing script"
+      ]
+    },
+    {
+      "id": "capability_headroom",
+      "name": "Capability headroom",
+      "weight": 0.2,
+      "rubric": [
+        "No added capability if the report grows",
+        "Some added capability for near-term report growth",
+        "Broad ready-made capability for grouping, joins, and larger data"
+      ]
+    },
+    {
+      "id": "setup_portability",
+      "name": "Setup portability",
+      "weight": 0.15,
+      "rubric": [
+        "Requires a managed environment with installed packages on each machine",
+        "Requires one small install step",
+        "Runs with any stock Python installation"
+      ]
+    },
+    {
+      "id": "robustness_to_size_unknowns",
+      "name": "Robustness to unmeasured file sizes",
+      "weight": 0.2,
+      "rubric": [
+        "Degrades or exhausts memory when weekly files turn out to be very large",
+        "Memory-safe for any file size, but real sizes remain unmeasured",
+        "Memory-safe for any file size and grounded in measured file-size data"
+      ]
+    }
+  ],
+  "hard_constraints": [],
+  "evidence_records": []
+}

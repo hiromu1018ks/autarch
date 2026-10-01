@@ -1,0 +1,230 @@
+{
+  "goal": "Standardize pricing-service on one test framework for its Python test suite so that tests, CI, and onboarding documentation stay coherent going forward.",
+  "question": "Select the test framework that pricing-service should use going forward, given that the project is a small Python package (Python >=3.10, no runtime dependencies) whose existing suite, dev dependency pin, GitHub Actions workflow, and onboarding docs are already written for pytest.",
+  "known_constraints": [
+    "The project supports Python >=3.10 (pyproject.toml: requires-python).",
+    "The only dev dependency today is pytest>=8; there are no runtime dependencies (pyproject.toml).",
+    "CI runs on push on ubuntu-latest, installs -e .[dev], and invokes the suite with a single headless `pytest` command (.github/workflows/ci.yml).",
+    "The README states all tests run under pytest in CI and that the suite and onboarding docs assume pytest (README.md:3-4).",
+    "The current suite is one test module using @pytest.mark.parametrize (tests/test_pricing.py).",
+    "Changing the framework going forward may update tests, pyproject dev extras, the CI workflow, and the README; the current pytest-based state itself is not a mandate."
+  ],
+  "environment": {
+    "project_name": "pricing-service",
+    "language": "Python",
+    "python_floor": ">=3.10",
+    "build_backend": "setuptools>=68",
+    "ci": "GitHub Actions, ubuntu-latest, trigger on push",
+    "existing_test_framework": "pytest>=8 (dev extra)",
+    "suite_size": "one test module, two parametrized cases",
+    "evidence_checked_at": "2026-10-01T12:15:52+00:00"
+  },
+  "evidence": [
+    "pyproject.toml requires Python >=3.10 and lists pytest>=8 as the sole dev dependency (pyproject.toml:4,8).",
+    "The test module imports pytest and uses @pytest.mark.parametrize (tests/test_pricing.py:1,6).",
+    "CI installs -e .[dev] and runs `pytest` as a single headless command on ubuntu-latest (.github/workflows/ci.yml:8-9).",
+    "The README says all tests run under pytest in CI and that the suite and onboarding docs assume pytest (README.md:3-4).",
+    "PyPI metadata (checked 2026-10-01 via https://pypi.org/pypi/pytest/json): pytest 8.0.0 and 8.3.0 declare requires_python >=3.8, 8.4.2 declares >=3.9, and the latest release 9.1.1 declares >=3.10.",
+    "Local runtime check: the interpreter is Python 3.14.7 (>=3.10) and the stdlib unittest module is importable.",
+    "Local runtime check: `python3 -m unittest --help` exits 0, confirming a non-interactive stdlib CLI runner."
+  ],
+  "alternatives": [
+    {
+      "id": "keep-pytest",
+      "name": "Keep pytest",
+      "description": "Retain pytest>=8 as the project's test framework, leaving the existing test module, dev dependency pin, CI invocation, and README guidance as they are.",
+      "advantages": [
+        "Existing test module, dev dependency pin, CI workflow, and README guidance need no changes.",
+        "Parametrize, fixtures, markers, and a large plugin ecosystem remain available as the suite grows.",
+        "The README-documented workflow (pytest in CI; docs assume pytest) stays accurate.",
+        "pytest releases from 8.0 onward support Python >=3.10 per PyPI metadata."
+      ],
+      "disadvantages": [
+        "Keeps a third-party test dependency in the dev extra that must track upstream releases and breaking changes.",
+        "Test code is coupled to a pytest-specific API (@pytest.mark.parametrize)."
+      ],
+      "assumptions": [
+        "Upstream pytest continues to publish releases supporting the project's Python floor.",
+        "The suite will eventually benefit from fixtures or plugins as it grows."
+      ]
+    },
+    {
+      "id": "stdlib-unittest",
+      "name": "Migrate to stdlib unittest",
+      "description": "Rewrite the suite as unittest.TestCase tests, remove pytest from the dev extra, and run CI with `python -m unittest`.",
+      "advantages": [
+        "Removes the only third-party dev dependency; tests run on any CPython >=3.10 interpreter.",
+        "Unaffected by third-party framework release cadence or breaking changes.",
+        "`python -m unittest` provides a single non-interactive CLI command suitable for CI gating.",
+        "Stdlib API is stable across Python releases."
+      ],
+      "disadvantages": [
+        "Requires rewriting the existing test module from @pytest.mark.parametrize to subTest or loops.",
+        "Forfeits pytest fixtures, the plugin ecosystem, and pytest's assertion introspection; failure output is less detailed.",
+        "CI workflow, pyproject dev extra, README, and onboarding docs must all be updated together.",
+        "TestCase style is more verbose for parameterized cases."
+      ],
+      "assumptions": [
+        "The suite does not need pytest-specific plugins or fixtures in the foreseeable future.",
+        "`python -m unittest` satisfies the CI gating requirement."
+      ]
+    },
+    {
+      "id": "hybrid-unittest-pytest",
+      "name": "unittest tests with pytest runner",
+      "description": "Author tests with stdlib unittest.TestCase APIs while keeping pytest>=8 in the dev extra as the CI runner for execution and reporting.",
+      "advantages": [
+        "Test code avoids pytest-specific APIs, so tests remain runnable under `python -m unittest` without pytest installed.",
+        "CI keeps pytest's execution, reporting, and plugin ecosystem.",
+        "Both the stdlib runner and pytest stay available to contributors."
+      ],
+      "disadvantages": [
+        "Maintains the third-party pytest dependency that a stdlib-only setup would remove.",
+        "Requires rewriting the existing test module to unittest idioms while tooling and docs still center on pytest.",
+        "Forfeits pytest-specific authoring features (fixtures, parametrize) in test code while still carrying pytest as a dependency."
+      ],
+      "assumptions": [
+        "Contributors benefit from being able to run tests without installing pytest.",
+        "pytest's value as a runner alone justifies keeping the dev dependency."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "suite-continuity",
+      "name": "Suite, CI, and docs continuity",
+      "weight": 0.3,
+      "rubric": [
+        "Requires rewriting the entire suite plus CI and doc changes",
+        "Requires rewriting most tests plus CI and doc changes",
+        "Requires moderate migration across suite, CI, and docs",
+        "Requires only minor edits to suite, CI, or docs",
+        "Suite, CI, and onboarding docs work unchanged"
+      ]
+    },
+    {
+      "id": "testing-capability",
+      "name": "Testing capability for a growing suite",
+      "weight": 0.3,
+      "rubric": [
+        "No fixtures, no parameterization, no plugin ecosystem",
+        "Basic assertions only",
+        "Parameterization or fixtures, but not both",
+        "Fixtures and parameterization with a small plugin ecosystem",
+        "Fixtures, parameterization, large plugin ecosystem, and detailed failure reporting"
+      ]
+    },
+    {
+      "id": "dependency-overhead",
+      "name": "Dependency and maintenance overhead",
+      "weight": 0.2,
+      "rubric": [
+        "Adds several new third-party test dependencies",
+        "Adds one new third-party test dependency",
+        "Keeps the current single third-party dev dependency",
+        "Removes the third-party dev dependency entirely (stdlib only)"
+      ]
+    },
+    {
+      "id": "onboarding-alignment",
+      "name": "Onboarding and documentation alignment",
+      "weight": 0.2,
+      "rubric": [
+        "Docs must be rewritten and contributors must learn an unfamiliar framework",
+        "Docs need substantial updates and contributors lose an established workflow",
+        "Docs need targeted updates and the workflow stays broadly familiar",
+        "Docs stay accurate with small updates",
+        "Docs stay accurate unchanged and contributors keep the established workflow"
+      ]
+    }
+  ],
+  "hard_constraints": [
+    {
+      "id": "hc-python-support",
+      "description": "The chosen framework must run on Python >=3.10, the support floor declared in pyproject.toml.",
+      "assessments": {
+        "keep-pytest": {
+          "status": "met",
+          "evidence_ids": ["ev-pypi-pytest-python-support", "ev-pyproject-requires-python"]
+        },
+        "stdlib-unittest": {
+          "status": "met",
+          "evidence_ids": ["ev-stdlib-unittest", "ev-pyproject-requires-python"]
+        },
+        "hybrid-unittest-pytest": {
+          "status": "met",
+          "evidence_ids": ["ev-pypi-pytest-python-support", "ev-pyproject-requires-python"]
+        }
+      }
+    },
+    {
+      "id": "hc-ci-headless",
+      "description": "The chosen framework must run the full suite non-interactively from a single CLI command in the existing GitHub Actions CI on ubuntu-latest.",
+      "assessments": {
+        "keep-pytest": {
+          "status": "met",
+          "evidence_ids": ["ev-ci-pytest-command"]
+        },
+        "stdlib-unittest": {
+          "status": "met",
+          "evidence_ids": ["ev-unittest-cli"]
+        },
+        "hybrid-unittest-pytest": {
+          "status": "met",
+          "evidence_ids": ["ev-ci-pytest-command", "ev-unittest-cli"]
+        }
+      }
+    }
+  ],
+  "evidence_records": [
+    {
+      "id": "ev-pyproject-requires-python",
+      "fact": "pricing-service declares requires-python = \">=3.10\", has no runtime dependencies, and pins pytest>=8 as its only dev dependency.",
+      "source": "pyproject.toml:4-8",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-pypi-pytest-python-support",
+      "fact": "PyPI metadata: pytest 8.0.0 and 8.3.0 declare requires_python >=3.8, 8.4.2 declares >=3.9, and the latest release 9.1.1 declares >=3.10, so every release from 8.0 onward supports Python 3.10.",
+      "source": "PyPI JSON API https://pypi.org/pypi/pytest/json and https://pypi.org/pypi/pytest/{8.0.0,8.3.0,8.4.2}/json",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-stdlib-unittest",
+      "fact": "The unittest module ships in the CPython standard library and imports successfully on the local Python 3.14.7 interpreter, which satisfies the project's >=3.10 floor.",
+      "source": "local runtime check: python3 --version and import unittest (Python 3.14.7)",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-unittest-cli",
+      "fact": "The standard library provides a non-interactive CLI test runner: `python -m unittest --help` exits 0 on the local interpreter.",
+      "source": "local runtime check: python3 -m unittest --help (exit code 0)",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-ci-pytest-command",
+      "fact": "The GitHub Actions workflow installs `-e .[dev]` and runs the suite with a single headless `pytest` command on ubuntu-latest, triggered on push.",
+      "source": ".github/workflows/ci.yml:8-9",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-readme-pytest-assumption",
+      "fact": "The README states that all tests run under pytest in CI and that the suite and onboarding docs assume pytest.",
+      "source": "README.md:3-4",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-tests-use-pytest-api",
+      "fact": "The only test module imports pytest and parameterizes its two cases with @pytest.mark.parametrize.",
+      "source": "tests/test_pricing.py:1-8",
+      "checked_at": "2026-10-01T12:15:52+00:00",
+      "kind": "verified"
+    }
+  ]
+}

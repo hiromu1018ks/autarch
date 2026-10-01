@@ -1,0 +1,218 @@
+{
+  "goal": "Ship the notes-cli single-user, offline note-taking CLI by choosing a storage approach for its note data, unblocking the TODO in src/notes/cli.py that blocks the milestone.",
+  "question": "Select the storage approach for notes-cli's note data that best fits a single-user, fully offline Python CLI (>= 3.10) that currently has no third-party dependencies.",
+  "known_constraints": [
+    "notes-cli runs entirely offline on the user's own machine; no network access is required or desired (README.md)",
+    "notes-cli is single-user and only one process touches the data at a time (README.md)",
+    "The project currently declares no third-party dependencies and targets Python >= 3.10 (pyproject.toml)"
+  ],
+  "environment": {
+    "project": "notes-cli",
+    "language": "Python >= 3.10 (local runtime: Python 3.14.7)",
+    "current_dependencies": [],
+    "runtime": "local CLI on the user's own machine",
+    "concurrency": "only one process touches the data at a time",
+    "network": "none; the tool runs entirely offline",
+    "status": "storage backend not chosen yet; main() is a placeholder in src/notes/cli.py"
+  },
+  "evidence": [
+    "README.md describes notes-cli as a single-user note-taking CLI that runs entirely offline on the user's own machine, with no network access required or desired, and only one process touching the data at a time.",
+    "pyproject.toml declares dependencies = [] and requires-python >= 3.10, with the console script notes = notes.cli:main.",
+    "src/notes/cli.py lines 7-10 state the storage backend is not chosen and the TODO blocks the milestone.",
+    "A local runtime check at decision time (2026-10-01) confirmed Python 3.14.7 ships json, sqlite3 (bundled SQLite 3.53.4), and pathlib as standard-library modules under /usr/lib/python3.14; all import successfully with no third-party installation (python3 -c 'import json, sqlite3, pathlib')."
+  ],
+  "alternatives": [
+    {
+      "id": "plain-json-file",
+      "name": "Single JSON file",
+      "description": "Persist all notes as a list of note objects in one JSON file (for example ~/.notes/notes.json) that the CLI reads and rewrites using the standard-library json module.",
+      "advantages": [
+        "Uses only the Python standard library (json, pathlib); adds no dependency",
+        "The whole data file is human-readable and trivially inspectable, hand-editable, backed up, or version-controlled",
+        "Implementation is minimal: load the list, modify it, dump it back",
+        "Data lives in a single file, making backup and migration to another machine a file copy"
+      ],
+      "disadvantages": [
+        "Every command rewrites the entire file, and cost grows with the note corpus",
+        "No indexed queries; search scans the fully parsed list in memory",
+        "A naive write is not atomic, so an interrupted write can corrupt the file unless extra handling is added",
+        "No schema enforcement or type validation beyond ad-hoc checks in code"
+      ],
+      "assumptions": [
+        "The note corpus stays small enough to load fully into memory",
+        "Single-process access means no concurrent writers need guarding"
+      ]
+    },
+    {
+      "id": "sqlite-database",
+      "name": "SQLite database file",
+      "description": "Store notes in a single SQLite database file accessed through Python's built-in sqlite3 module, with a notes table and parameterized SQL queries.",
+      "advantages": [
+        "sqlite3 is in the Python standard library with a bundled SQLite engine; no third-party package and no server process",
+        "Transactional, atomic writes with rollback protect the data if a command is interrupted",
+        "Indexed queries and full-text search (FTS5) scale to large corpora without loading everything into memory",
+        "Column types and schema are enforced by the engine rather than by ad-hoc code"
+      ],
+      "disadvantages": [
+        "The data file is binary; reading or editing it requires the CLI or a SQLite tool",
+        "SQL statements and connection handling add implementation surface beyond plain file I/O",
+        "Schema changes over time must be handled as migrations",
+        "Version-control diffs of the data file are not meaningful"
+      ],
+      "assumptions": [
+        "A local single-file SQLite database satisfies the offline, single-machine requirement",
+        "The sqlite3 module is present in every Python environment the project supports"
+      ]
+    },
+    {
+      "id": "markdown-directory",
+      "name": "Markdown file per note",
+      "description": "Store each note as its own Markdown or plain-text file with a small metadata header inside one notes directory, discovered and read with pathlib.",
+      "advantages": [
+        "Uses only the Python standard library (pathlib, built-in open)",
+        "Every note is directly human-readable, hand-editable, and works with editors, grep, and version control",
+        "One file per note makes per-note export, selective backup, and sync natural",
+        "Deleting or renaming a note is a plain file operation"
+      ],
+      "disadvantages": [
+        "Listing and searching require directory traversal and per-file reads, which slow as the corpus grows",
+        "Metadata such as timestamps and tags lives in ad-hoc headers with no schema enforcement",
+        "File naming requires careful handling of collisions, Unicode, and length limits",
+        "Multi-file updates cannot be made atomic across files"
+      ],
+      "assumptions": [
+        "Users benefit from reading or editing note files directly with other tools",
+        "The corpus stays in a range where directory scans remain fast enough"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "implementation_simplicity",
+      "name": "Implementation simplicity",
+      "weight": 0.2,
+      "rubric": [
+        "Requires a server or a new heavyweight dependency",
+        "Considerable boilerplate plus migration machinery to maintain",
+        "Moderate extra handling such as transactions or per-file bookkeeping",
+        "Minimal, straightforward code paths only"
+      ]
+    },
+    {
+      "id": "query_and_scale_capability",
+      "name": "Query and scale capability",
+      "weight": 0.25,
+      "rubric": [
+        "Full-file or full-scan search that degrades quickly with corpus size",
+        "Scan-based search workable for small corpora only",
+        "Indexed queries available but limited",
+        "Indexed queries and full-text search that scale to large corpora"
+      ]
+    },
+    {
+      "id": "data_integrity",
+      "name": "Data integrity",
+      "weight": 0.25,
+      "rubric": [
+        "An interrupted write can silently corrupt stored data",
+        "Atomic per-file writes only; multi-file updates can tear",
+        "Atomic single-file writes with transactional rollback"
+      ]
+    },
+    {
+      "id": "human_readable_portability",
+      "name": "Human readability and portability",
+      "weight": 0.15,
+      "rubric": [
+        "Opaque binary format that needs tooling to read",
+        "Structured text that is machine-first but inspectable",
+        "Plain text directly readable, editable, and diff-friendly"
+      ]
+    },
+    {
+      "id": "dependency_footprint",
+      "name": "Dependency footprint",
+      "weight": 0.15,
+      "rubric": [
+        "Adds third-party packages or a server process",
+        "Adds a lightweight third-party package",
+        "Standard library only"
+      ]
+    }
+  ],
+  "hard_constraints": [
+    {
+      "id": "offline-local-storage",
+      "description": "All note data must be stored locally on the user's own machine and the CLI must operate entirely offline with no network access (README.md: \"no network access is required or desired\").",
+      "assessments": {
+        "plain-json-file": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-offline", "ev-stdlib-local"]
+        },
+        "sqlite-database": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-offline", "ev-stdlib-local"]
+        },
+        "markdown-directory": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-offline", "ev-stdlib-local"]
+        }
+      }
+    },
+    {
+      "id": "single-process-local-consistency",
+      "description": "The storage approach must suit a single-user CLI where only one process touches the data at a time, and must not require a shared server or concurrent multi-process coordination (README.md).",
+      "assessments": {
+        "plain-json-file": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-single-process", "ev-stdlib-local"]
+        },
+        "sqlite-database": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-single-process", "ev-stdlib-local"]
+        },
+        "markdown-directory": {
+          "status": "met",
+          "evidence_ids": ["ev-readme-single-process", "ev-stdlib-local"]
+        }
+      }
+    }
+  ],
+  "evidence_records": [
+    {
+      "id": "ev-readme-offline",
+      "fact": "README.md states that notes-cli \"runs entirely offline on the user's own machine; no network access is required or desired.\"",
+      "source": "README.md (project description, lines 1-6)",
+      "checked_at": "2026-10-01T11:56:04+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-readme-single-process",
+      "fact": "README.md states that notes-cli is a single-user note-taking CLI and that \"Only one process touches the data at a time.\"",
+      "source": "README.md (project description, lines 1-6)",
+      "checked_at": "2026-10-01T11:56:04+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-pyproject",
+      "fact": "pyproject.toml declares dependencies = [] and requires-python = \">=3.10\", and registers the console script notes = \"notes.cli:main\".",
+      "source": "pyproject.toml ([project] and [project.scripts])",
+      "checked_at": "2026-10-01T11:56:04+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-todo",
+      "fact": "src/notes/cli.py contains the comment \"TODO: choose storage backend (this decision blocks the milestone)\" and main() only prints a placeholder message.",
+      "source": "src/notes/cli.py (lines 7-10)",
+      "checked_at": "2026-10-01T11:56:04+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "ev-stdlib-local",
+      "fact": "Python 3.14.7 in the local environment ships json, sqlite3 (bundled SQLite 3.53.4), and pathlib as standard-library modules under /usr/lib/python3.14; all three import successfully with no third-party installation, and each provides purely local file access with no network calls.",
+      "source": "local runtime check: python3 -c 'import json, sqlite3, pathlib' (2026-10-01)",
+      "checked_at": "2026-10-01T11:56:04+00:00",
+      "kind": "verified"
+    }
+  ]
+}
