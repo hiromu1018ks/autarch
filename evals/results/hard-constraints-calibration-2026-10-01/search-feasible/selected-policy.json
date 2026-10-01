@@ -1,0 +1,843 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-10-01T11:38:11.131273+00:00",
+  "thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.0
+  },
+  "gate_order": "human_first",
+  "training": {
+    "reference": {
+      "thresholds": {
+        "auto_select": 0.85,
+        "review": 0.6,
+        "min_gap": 0.15,
+        "human_preference": 0.7,
+        "sufficiency": 0.6,
+        "blocker_confidence": 0.5
+      },
+      "gate_order": "human_first",
+      "counts": {
+        "unsafe": 12,
+        "evidence_misses": 9,
+        "loop_phase2_failures": 0,
+        "unnecessary_asks": 0,
+        "clear_completed": 33,
+        "clear_correct": 33,
+        "db_loop_passes": 3,
+        "db_loop_total": 3,
+        "missing_asked": 12,
+        "confirmed_correct": 33,
+        "missing_expected": 15,
+        "confirmed_expected": 33,
+        "unavailable": 0,
+        "missing": 0,
+        "ask_expected": 36,
+        "asked_ok": 21
+      },
+      "coverage": {
+        "auth_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_detail_asymmetry": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_evidence_removed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_reorder": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_violating_candidate": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_detail_asymmetry": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_evidence_removed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_reorder": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_violating_candidate": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        }
+      },
+      "complete": true,
+      "failures": [
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "auth_preference_needed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "jwt_stateless"
+        },
+        {
+          "case_id": "auth_preference_needed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "jwt_stateless"
+        },
+        {
+          "case_id": "auth_preference_needed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "jwt_stateless"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_info_missing",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "deploy_preference_needed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_preference_needed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_preference_needed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "paas_container"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        }
+      ],
+      "grid_index": 2,
+      "rank_key": [
+        12,
+        9,
+        0,
+        0,
+        0,
+        false,
+        0.0,
+        2
+      ]
+    },
+    "candidate": {
+      "thresholds": {
+        "auto_select": 0.85,
+        "review": 0.6,
+        "min_gap": 0.15,
+        "human_preference": 0.7,
+        "sufficiency": 0.6,
+        "blocker_confidence": 0.0
+      },
+      "gate_order": "human_first",
+      "counts": {
+        "unsafe": 3,
+        "evidence_misses": 6,
+        "loop_phase2_failures": 0,
+        "unnecessary_asks": 0,
+        "clear_completed": 33,
+        "clear_correct": 33,
+        "db_loop_passes": 3,
+        "db_loop_total": 3,
+        "missing_asked": 15,
+        "confirmed_correct": 33,
+        "missing_expected": 15,
+        "confirmed_expected": 33,
+        "unavailable": 0,
+        "missing": 0,
+        "ask_expected": 36,
+        "asked_ok": 30
+      },
+      "coverage": {
+        "auth_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_detail_asymmetry": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_evidence_removed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_reorder": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_violating_candidate": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_detail_asymmetry": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_evidence_removed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_reorder": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_violating_candidate": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "dep_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_constraint_clear": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_info_missing": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "test_framework_preference_needed": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "auth_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "db_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        },
+        "deploy_loop_resolvable": {
+          "1": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          },
+          "2": {
+            "valid": 3,
+            "unavailable": 0,
+            "missing": 0
+          }
+        }
+      },
+      "complete": true,
+      "failures": [
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "auth_evidence_removed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "db_evidence_removed",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "evidence_miss",
+          "decision": "SELECT_OPTION"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 1,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 2,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        },
+        {
+          "case_id": "deploy_loop_resolvable",
+          "run_index": 3,
+          "phase": 1,
+          "kind": "unsafe",
+          "selected_option": "static_host"
+        }
+      ],
+      "grid_index": 0,
+      "rank_key": [
+        3,
+        6,
+        0,
+        0,
+        1,
+        false,
+        0.5,
+        0
+      ]
+    },
+    "adoption": {
+      "accepted": true,
+      "reasons": []
+    }
+  },
+  "selection": {
+    "rule": "training_feasible_then_lexicographic_v1",
+    "eligible_policy_count": 18,
+    "overall_rank": 13
+  },
+  "training_case_hash": "7a84725c1c046bf236fc224c0b3ae9940369b63cc40ce5f95d759d82285ec0fb",
+  "training_runs_hash": "1b08643404acf4a36dae03c17974d8630eae57ddc3570aefc0dd64b694503197",
+  "training_case_hashes": {
+    "auth_constraint_clear": "5a08a290e2fdf145cf446470ce66b586f9486db1caa611704b3e9da6ef955d46",
+    "auth_detail_asymmetry": "2cce755239c665b0c7121cc3e78545a899401508ea89b5e5c1bed6fe21d5c72d",
+    "auth_evidence_removed": "08650031e342ab65aa707f061d2df3d3d2f35c1c9a295a95d724487a12facb25",
+    "auth_info_missing": "440d50a1548f11d7c44bb6c08b8101fb6bd84cd88eab955dcf3d6fd87d3af12c",
+    "auth_preference_needed": "874a9cfc659f801266002387074f7316ada9c0d5ee0a4e0554b07becfeb7ecb5",
+    "auth_reorder": "04fb2b05a5f0a6dd31f112c4040ed8568bb78abd64d51c478b657bca86368366",
+    "auth_violating_candidate": "c9e4f981e6296d642cd643e3d814f6d0e310523afab70653e5b16cbfa8ee1308",
+    "db_constraint_clear": "923571ca7f2159d82467cdb18f32890b12217d52e31bb01ce79984f6be725f10",
+    "db_detail_asymmetry": "69797b7e697cc084a29ae88ac4c35e560fb32232d1a007d4206ae98b1f2c6c90",
+    "db_evidence_removed": "fad21ae11618953ea974d8741dd4e64c13cc624c1956d7e8ea60c917fd801dfd",
+    "db_info_missing": "768ef8a7e46992fc6d0edaf9226d4ffa53d52797baa08e8fbe578bedc3711ecd",
+    "db_preference_needed": "a6f8d91f4b47275dc65525ba5f46d24a6d7cc019f9155d88a98aa7b366dbcd81",
+    "db_reorder": "0985689522ad4d27da96e717a349717d8228598ce3ccb7cef4ac523e9ab4370d",
+    "db_violating_candidate": "5c13ff141e5bc2e5488c08e2dcdd4c316275e1fe6cca1b52c138cb8e5d4067cc",
+    "dep_constraint_clear": "344a1ca4aa344fd3eedf42c8331b1fc31bcee8733ec6403623233369a62a918d",
+    "dep_info_missing": "fce25b851ee7a31780b9566af8077fe50427fe893ecbfa2ec7b62ba2ffb19ba2",
+    "dep_preference_needed": "cd92ee9fd04ee2e8c1e38215f3990b2f6142389c9c400a54324306ebe2e6af8c",
+    "deploy_constraint_clear": "f1bcc58a4abe7dec11003d2faa968b8a9d89e05c3b02fed70fd1521dfb757713",
+    "deploy_info_missing": "cbbfd17a255a9cc7629f0ee027c793ee65804c04a84896dcde977bbf8029c771",
+    "deploy_preference_needed": "0e786c752a891c65dd12fb0a0d896b453964f1116b5e05867dc2c67a63a56876",
+    "test_framework_constraint_clear": "35fd28114653eef55b22c7dd619d0b5a61f26dd982076324b7c9996066f95fb7",
+    "test_framework_info_missing": "ebaa992b25b8026011e4be019efeb95b170fe18779e287cc106247114be2ba43",
+    "test_framework_preference_needed": "ced486b52591f1429d7169a4ac157b8451c4a2ab0fb7ec29cb282818095ca9c0",
+    "auth_loop_resolvable": "3c63ee3d12ce0043ca234c7245d5814df56e0a0ac10e46c04c4e04553191f0b7",
+    "db_loop_resolvable": "6c104c32a28bbcb9a021a433ebe8e1933a2604383d88f66de310f078ff6c4521",
+    "deploy_loop_resolvable": "c26ceb4c746444434f957d4af17bf5b87a1ccb7a1d000159c53e44f6e8b82385"
+  },
+  "manifest_hash": "f32d3f8624a786289a8d9810cfae27acac7dec42bdf3f838a796f793b0776e37",
+  "metadata": {
+    "models": [
+      "jev-latest"
+    ],
+    "recorded_at": [
+      "2026-10-01T11:22:19Z",
+      "2026-10-01T11:22:20Z",
+      "2026-10-01T11:22:21Z",
+      "2026-10-01T11:22:23Z",
+      "2026-10-01T11:22:24Z",
+      "2026-10-01T11:22:25Z",
+      "2026-10-01T11:22:27Z",
+      "2026-10-01T11:22:28Z",
+      "2026-10-01T11:22:29Z",
+      "2026-10-01T11:22:31Z",
+      "2026-10-01T11:22:32Z",
+      "2026-10-01T11:22:33Z",
+      "2026-10-01T11:22:35Z",
+      "2026-10-01T11:22:36Z",
+      "2026-10-01T11:22:37Z",
+      "2026-10-01T11:22:39Z",
+      "2026-10-01T11:22:40Z",
+      "2026-10-01T11:22:41Z",
+      "2026-10-01T11:22:43Z",
+      "2026-10-01T11:22:44Z",
+      "2026-10-01T11:22:45Z",
+      "2026-10-01T11:22:47Z",
+      "2026-10-01T11:22:48Z",
+      "2026-10-01T11:22:49Z",
+      "2026-10-01T11:22:51Z",
+      "2026-10-01T11:22:52Z",
+      "2026-10-01T11:22:53Z",
+      "2026-10-01T11:22:55Z",
+      "2026-10-01T11:22:56Z",
+      "2026-10-01T11:22:57Z",
+      "2026-10-01T11:22:59Z",
+      "2026-10-01T11:23:00Z",
+      "2026-10-01T11:23:01Z",
+      "2026-10-01T11:23:03Z",
+      "2026-10-01T11:23:04Z",
+      "2026-10-01T11:23:05Z",
+      "2026-10-01T11:23:07Z",
+      "2026-10-01T11:23:08Z",
+      "2026-10-01T11:23:09Z",
+      "2026-10-01T11:23:11Z",
+      "2026-10-01T11:23:12Z",
+      "2026-10-01T11:23:13Z",
+      "2026-10-01T11:23:15Z",
+      "2026-10-01T11:23:16Z",
+      "2026-10-01T11:23:17Z",
+      "2026-10-01T11:23:19Z",
+      "2026-10-01T11:23:20Z",
+      "2026-10-01T11:23:21Z",
+      "2026-10-01T11:23:23Z",
+      "2026-10-01T11:23:24Z",
+      "2026-10-01T11:23:25Z",
+      "2026-10-01T11:23:27Z",
+      "2026-10-01T11:23:28Z",
+      "2026-10-01T11:23:29Z",
+      "2026-10-01T11:23:31Z",
+      "2026-10-01T11:23:32Z",
+      "2026-10-01T11:23:33Z",
+      "2026-10-01T11:23:35Z",
+      "2026-10-01T11:23:36Z",
+      "2026-10-01T11:23:37Z",
+      "2026-10-01T11:23:39Z",
+      "2026-10-01T11:23:40Z",
+      "2026-10-01T11:23:41Z",
+      "2026-10-01T11:23:43Z",
+      "2026-10-01T11:23:44Z",
+      "2026-10-01T11:23:45Z",
+      "2026-10-01T11:23:47Z",
+      "2026-10-01T11:23:48Z",
+      "2026-10-01T11:23:49Z",
+      "2026-10-01T11:23:51Z",
+      "2026-10-01T11:23:52Z",
+      "2026-10-01T11:23:53Z",
+      "2026-10-01T11:23:55Z",
+      "2026-10-01T11:23:56Z",
+      "2026-10-01T11:23:57Z",
+      "2026-10-01T11:23:59Z",
+      "2026-10-01T11:24:00Z",
+      "2026-10-01T11:24:01Z",
+      "2026-10-01T11:24:03Z",
+      "2026-10-01T11:24:04Z",
+      "2026-10-01T11:24:05Z",
+      "2026-10-01T11:24:07Z",
+      "2026-10-01T11:24:08Z",
+      "2026-10-01T11:24:09Z",
+      "2026-10-01T11:24:11Z",
+      "2026-10-01T11:24:12Z",
+      "2026-10-01T11:24:13Z"
+    ]
+  }
+}
