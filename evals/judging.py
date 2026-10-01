@@ -92,7 +92,7 @@ def base_majority(base_runs):
     return None
 
 
-def perturbation_run_pass(case, run, majority, auto_select):
+def perturbation_run_pass(case, run, majority, auto_select=0.85):
     """Verdict for one perturbation run: pass / fail / inconclusive (spec §4.3)."""
     perturbation = case["derived_from"]["perturbation"]
     resolution = run["resolution"]
