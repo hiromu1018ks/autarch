@@ -1,6 +1,6 @@
-# Task 7: 学習記録を取得し、選択規則の修正をレビューへ渡した
+# Task 7: 検証用で候補を棄却し、既定値を維持した
 
-必須条件トラックは21/21組が成功した。学習用は87/87位相、制約用は27/27位相を取得し、provider 障害・欠測・再試行は0件だった。旧選択規則の首位候補は学習条件を満たさず rejected。一方、下位18設定は学習条件を通過するため、controller の指示で条件を先に適用する選択規則へ修正した。修正後の実測探索と検証用実行は、レビュー待ちで未実施。既定値は変更していない。
+必須条件トラックは21/21組が成功した。学習用は87/87位相、制約用は27/27位相を取得し、provider 障害・欠測・再試行は0件だった。旧選択規則の首位候補は学習条件を満たさず rejected。下位18設定が学習条件を通過するため、controller の指示で条件を先に適用する選択規則へ修正した。レビュー後に一つを凍結し、検証用30/30件を実行した。最終判定は unsafe=3、根拠不足のASK_USER=12/15、確認済みの正しい選択=15/15で rejected。既定値は変更していない。
 
 ## ケースと実行設定をモデル呼び出し前に固定した
 
@@ -52,4 +52,24 @@ manifestとpolicyのfrozen_atは、有効で未来でないタイムゾーン付
 
 選択規則修正は2 failedから開始し、対象175 passed、全体592 passed / 3 skippedを確認した。既存live試験3件は未指定の環境フラグによるskip。`git diff --check`も成功。新規runtime依存はなく、既存23ケース、loop期待値、judging.pyは変更していない。
 
-レビュー後は同じ保存済み学習信号を別の新規out-dirで探索し、最終候補をcommitしてから検証用30実行へ進む。現時点のheld-outは0件、adoption.jsonは未作成、acceptedの最終判定も未確定。Task8の既定値更新はまだ許されない。
+レビュー前にはheld-outを0件のまま保ち、修正の承認を待った。承認後の経過と最終判定は次節に記録する。
+
+## 最終候補は検証用で不成立となり、既定値を維持した
+
+prevalidation reviewはCritical/Important/MinorなしでPASS。保存済み87件だけを、旧searchとは別のsearch-feasibleへ渡した。通過18設定中の最良候補はgrid_index=0、全体順位13位。blocker_confidence=0.00だけを変更し、auto_select=.85、review=.60、min_gap=.15、human_preference=.70、sufficiency=.60、human_firstはBと同じ。学習用採用条件は成立した。
+
+| 学習用の集計 | B現行 | 最終候補 |
+|---|---:|---:|
+| unsafe | 12 | 3 |
+| 根拠不足の見逃し | 9 | 6 |
+| clear完了・正しい選択 | 33 / 33 | 33 / 33 |
+| db loop完全パス | 3 / 3 | 3 / 3 |
+| loop位相2失敗 | 0 | 0 |
+
+最終policyのfrozen_atは2026-10-01T11:38:11.131273Z。設定とhashをd27382cでcommitしてから検証を開始した。run_fixed_state.pyへ全設定を明示的に渡した。検証はUTC11:38:53〜11:39:33（40秒）、jev-latestで30/30有効実行、provider障害・欠測・再試行0件。environment.jsonも同じ設定を記録する。
+
+validateはexit1、[adoption.json](validation-report/adoption.json)はaccepted=false。理由はvalidation unsafe is not zeroとvalidation missing ASK_USER must be 15/15。確認済みケースは15/15正しい選択、根拠不足ケースは12/15 ASK_USER。dep_binary_permission_missingの3実行すべてがpypdf_pythonを選び、凍結したASK_USER期待に対してunsafe=3・見逃し=3となった。他の9ケースは各3件の期待を満たした。
+
+失敗3件のconfidenceは1.0、sufficiencyは0.67/0.66/0.68、blockerはfacts_missing、blocker_confidenceは0.95。sufficiencyが選択閾値0.60以上なのでゲートが発火しなかった。この観測から再探索、ケース変更、閾値調整は行っていない。
+
+生記録のpolicy/manifest/runsのhashと時刻はvalidateで一致を確認した。旧search、修正後search-feasible、validation、validation-reportを同じresult rootに保存する。全体試験は再度592 passed / 3 skipped（13.87秒）、git diff --checkも成功した。少数ケースの不成立を報告し、Task8へは既定値を変更しない方針を渡す。

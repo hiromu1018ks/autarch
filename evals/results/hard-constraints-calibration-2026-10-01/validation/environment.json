@@ -1,0 +1,19 @@
+{
+  "runner": "run_fixed_state.py",
+  "model": "jev-latest",
+  "gate_order": "human_first",
+  "capture_evaluation": true,
+  "thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.0
+  },
+  "decide_script": "/home/misty/Projects/autarch/.worktrees/hard-constraints-calibration/skills/autarch/scripts/decide.py",
+  "runs_per_case": 3,
+  "started_at": "2026-10-01T11:38:53Z",
+  "finished_at": "2026-10-01T11:39:33Z",
+  "total_api_calls": 30
+}

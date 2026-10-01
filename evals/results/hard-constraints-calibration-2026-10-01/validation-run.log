@@ -1,0 +1,32 @@
+writing runs to evals/results/hard-constraints-calibration-2026-10-01/validation/fixed_state_runs.jsonl
+auth_revocation_confirmed run 1 attempt 1: SELECT_OPTION
+auth_revocation_confirmed run 2 attempt 1: SELECT_OPTION
+auth_revocation_confirmed run 3 attempt 1: SELECT_OPTION
+auth_revocation_missing run 1 attempt 1: ASK_USER
+auth_revocation_missing run 2 attempt 1: ASK_USER
+auth_revocation_missing run 3 attempt 1: ASK_USER
+db_multi_host_confirmed run 1 attempt 1: SELECT_OPTION
+db_multi_host_confirmed run 2 attempt 1: SELECT_OPTION
+db_multi_host_confirmed run 3 attempt 1: SELECT_OPTION
+db_multi_host_missing run 1 attempt 1: ASK_USER
+db_multi_host_missing run 2 attempt 1: ASK_USER
+db_multi_host_missing run 3 attempt 1: ASK_USER
+dep_binary_permission_confirmed run 1 attempt 1: SELECT_OPTION
+dep_binary_permission_confirmed run 2 attempt 1: SELECT_OPTION
+dep_binary_permission_confirmed run 3 attempt 1: SELECT_OPTION
+dep_binary_permission_missing run 1 attempt 1: SELECT_OPTION
+dep_binary_permission_missing run 2 attempt 1: SELECT_OPTION
+dep_binary_permission_missing run 3 attempt 1: SELECT_OPTION
+deploy_persistent_disk_confirmed run 1 attempt 1: SELECT_OPTION
+deploy_persistent_disk_confirmed run 2 attempt 1: SELECT_OPTION
+deploy_persistent_disk_confirmed run 3 attempt 1: SELECT_OPTION
+deploy_persistent_disk_missing run 1 attempt 1: ASK_USER
+deploy_persistent_disk_missing run 2 attempt 1: ASK_USER
+deploy_persistent_disk_missing run 3 attempt 1: ASK_USER
+test_browser_integration_confirmed run 1 attempt 1: SELECT_OPTION
+test_browser_integration_confirmed run 2 attempt 1: SELECT_OPTION
+test_browser_integration_confirmed run 3 attempt 1: SELECT_OPTION
+test_browser_integration_missing run 1 attempt 1: ASK_USER
+test_browser_integration_missing run 2 attempt 1: ASK_USER
+test_browser_integration_missing run 3 attempt 1: ASK_USER
+evals/results/hard-constraints-calibration-2026-10-01/validation

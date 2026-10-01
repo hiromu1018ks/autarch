@@ -1,14 +1,16 @@
 # Autarch 拡張開発の状態
 
-必須条件の採点前検査と閾値比較を実装し、Task7の学習用・独立制約トラックを実測した。現在は選択規則修正のレビュー待ち。検証用は未実行で、閾値の既定値は維持している。
+必須条件の採点前検査と閾値比較を実装し、Task7の学習用・独立制約トラックを実測した。Task7の検証用30件も完了したが、採用条件を満たさずrejected。閾値の既定値は維持している。
 
-## 2026-10-01: 学習用87件と制約27位相を取得し、選択規則を修正した
+## 2026-10-01: 検証用は不成立となり、閾値の既定値を維持した
 
 結果は `evals/results/hard-constraints-calibration-2026-10-01/notes.md`。検証用5題材10ケースはモデル実行前に `3af7567` で凍結した。Jevは`jev-latest`、学習用は87/87件、制約は27/27位相を取得し21/21組pass。provider障害と欠測は0件。
 
 旧探索の首位はunsafe12→0、根拠不足見逃し9→0だったが、clear正しい選択33→9、db loop完全パス3→0となりrejected。一方、下位18設定は学習用採用条件を通過したため、controllerが「学習条件を先に適用し、通過候補の中から辞書式で一つ選ぶ」と設計意図を明示した。修正`046c680`は対象175 passed、全体592 passed / 3 skipped。数値条件は変更していない。
 
-controllerレビュー後、同じ保存済み信号を新しいout-dirで探索し、一つの最終候補を凍結してから検証用30実行へ進む。検証用での再選択・調整は禁止。最終accepted判定は未確定で、Task8の既定値更新はまだ行わない。
+controllerレビューPASS後、同じ87件をsearch-feasibleで探索した。最終候補はblocker_confidence=.00のみ変更し、学習用unsafe12→3、見逃し9→6、clear33とdb loop3/3を維持。d27382cでpolicyを凍結してから、全設定を明示して検証用30件を実行した。確認済み15/15は正しい選択、根拠不足はASK_USER12/15。dep_binary_permission_missingの3件がpypdf_pythonを選び、unsafe3で採用条件を満たさなかった。validateはexit1、validation-report/adoption.jsonはaccepted=false。provider障害・欠測は0件。
+
+検証結果を見た再選択・調整は行わず、既定値は変更しない。再度の全体試験は592 passed / 3 skipped。次はTask8の既存ケースとfull-flowの最終互換性評価。閾値更新は行わない。
 
 以下は第1拡張完了時の記録（`97d5f40`）。
 
