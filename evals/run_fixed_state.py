@@ -29,9 +29,13 @@ def is_retryable(detail):
     return detail.startswith("transport failure") or detail.startswith("HTTP 5")
 
 
-def run_once(case, args, state_dir):
-    state_file = Path(state_dir) / f"{case['id']}.json"
-    state_file.write_text(json.dumps(case["state"], ensure_ascii=False), encoding="utf-8")
+def run_once(case, args, state_dir, state=None, phase=None):
+    effective_state = case["state"] if state is None else state
+    suffix = "" if phase is None else f".phase{phase}"
+    state_file = Path(state_dir) / f"{case['id']}{suffix}.json"
+    state_file.write_text(
+        json.dumps(effective_state, ensure_ascii=False), encoding="utf-8"
+    )
     command = [
         sys.executable, str(args.decide_script),
         "--state-file", str(state_file),
@@ -40,6 +44,8 @@ def run_once(case, args, state_dir):
         "--review", str(args.review),
         "--min-gap", str(args.min_gap),
         "--human-preference", str(args.human_preference),
+        "--sufficiency", str(args.sufficiency),
+        "--blocker-confidence", str(args.blocker_confidence),
     ]
     started = time.perf_counter()
     completed = subprocess.run(
@@ -54,7 +60,7 @@ def run_once(case, args, state_dir):
             "rule": "provider_error",
             "detail": f"unparseable decide.py stdout (exit {completed.returncode})",
         }
-    return {
+    record = {
         "case_id": case["id"],
         "run_index": None,
         "attempt": None,
@@ -63,6 +69,28 @@ def run_once(case, args, state_dir):
         "exit_code": completed.returncode,
         "recorded_at": runner_common.utc_now(),
     }
+    if phase is not None:
+        record["case_kind"] = "loop"
+        record["phase"] = phase
+    return record
+
+
+def run_with_retry(case, args, state_dir, state=None, phase=None):
+    """Run one decide.py call with the runner's transport-retry policy."""
+    for attempt in range(1, 4):
+        record = run_once(case, args, state_dir, state=state, phase=phase)
+        record["attempt"] = attempt
+        record["classification"] = judging.classify_run(record["resolution"])
+        detail = record["resolution"].get("detail")
+        retryable = (
+            record["classification"] == "unavailable"
+            and is_retryable(detail)
+            and attempt < 3
+        )
+        if not retryable:
+            break
+        time.sleep(args.retry_backoff ** attempt)
+    return record
 
 
 def main(argv=None) -> int:
@@ -83,6 +111,10 @@ def main(argv=None) -> int:
     parser.add_argument("--review", type=float, default=0.60)
     parser.add_argument("--min-gap", type=float, default=0.15)
     parser.add_argument("--human-preference", type=float, default=0.70)
+    parser.add_argument("--sufficiency", type=float, default=0.60)
+    parser.add_argument("--blocker-confidence", type=float, default=0.50)
+    parser.add_argument("--loop-cases-dir", default=None,
+                        help="directory of two-phase loop cases to run additionally")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--allow-partial-set", action="store_true")
     args = parser.parse_args(argv)
@@ -99,6 +131,13 @@ def main(argv=None) -> int:
             print(f"error: unknown case ids: {', '.join(sorted(unknown))}", file=sys.stderr)
             return 2
         cases = [case for case in cases if case["id"] in wanted]
+    loop_cases = []
+    if args.loop_cases_dir:
+        try:
+            loop_cases = case_schema.load_loop_cases(args.loop_cases_dir)
+        except case_schema.CaseError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
     if not args.allow_partial_set:
         violations = case_schema.validate_case_set(cases)
         if violations:
@@ -110,7 +149,8 @@ def main(argv=None) -> int:
         print(json.dumps({
             "runs_per_case": args.runs,
             "cases": [case["id"] for case in cases],
-            "total_api_calls": args.runs * len(cases),
+            "loop_cases": [case["id"] for case in loop_cases],
+            "total_api_calls": args.runs * (len(cases) + 2 * len(loop_cases)),
         }, indent=2))
         return 0
     if not os.environ.get("TYPESAFE_API_KEY", "").strip():
@@ -130,20 +170,8 @@ def main(argv=None) -> int:
     with tempfile.TemporaryDirectory() as state_dir:
         for case in cases:
             for run_index in range(1, args.runs + 1):
-                for attempt in range(1, 4):
-                    record = run_once(case, args, state_dir)
-                    record["run_index"] = run_index
-                    record["attempt"] = attempt
-                    record["classification"] = judging.classify_run(record["resolution"])
-                    detail = record["resolution"].get("detail")
-                    retryable = (
-                        record["classification"] == "unavailable"
-                        and is_retryable(detail)
-                        and attempt < 3
-                    )
-                    if not retryable:
-                        break
-                    time.sleep(args.retry_backoff ** attempt)
+                record = run_with_retry(case, args, state_dir)
+                record["run_index"] = run_index
                 runner_common.append_jsonl(runs_path, record)
                 print(
                     f"{case['id']} run {run_index} attempt {record['attempt']}: "
@@ -151,6 +179,24 @@ def main(argv=None) -> int:
                     file=sys.stderr,
                 )
                 time.sleep(args.interval)
+        for case in loop_cases:
+            for run_index in range(1, args.runs + 1):
+                for phase in (1, 2):
+                    state = (
+                        case["state"] if phase == 1
+                        else case_schema.loop_phase2_state(case)
+                    )
+                    record = run_with_retry(
+                        case, args, state_dir, state=state, phase=phase
+                    )
+                    record["run_index"] = run_index
+                    runner_common.append_jsonl(runs_path, record)
+                    print(
+                        f"{case['id']} run {run_index} phase {phase}: "
+                        f"{record['resolution'].get('decision')}",
+                        file=sys.stderr,
+                    )
+                    time.sleep(args.interval)
     environment = {
         "runner": "run_fixed_state.py",
         "model": args.model,
@@ -159,13 +205,17 @@ def main(argv=None) -> int:
             "review": args.review,
             "min_gap": args.min_gap,
             "human_preference": args.human_preference,
+            "sufficiency": args.sufficiency,
+            "blocker_confidence": args.blocker_confidence,
         },
         "decide_script": str(args.decide_script),
         "runs_per_case": args.runs,
         "started_at": started_at,
         "finished_at": runner_common.utc_now(),
-        "total_api_calls": args.runs * len(cases),
+        "total_api_calls": args.runs * (len(cases) + 2 * len(loop_cases)),
     }
+    if loop_cases:
+        environment["loop_cases"] = [case["id"] for case in loop_cases]
     (out_dir / "environment.json").write_text(
         json.dumps(environment, indent=2), encoding="utf-8"
     )

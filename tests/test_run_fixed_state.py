@@ -147,3 +147,122 @@ def test_is_retryable():
     assert not run_fixed_state.is_retryable("HTTP 429")
     assert not run_fixed_state.is_retryable("response is not valid JSON")
     assert not run_fixed_state.is_retryable(None)
+
+
+LOOP_STUB = '''#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+
+state_path = Path(sys.argv[sys.argv.index("--state-file") + 1])
+state = json.loads(state_path.read_text(encoding="utf-8"))
+if "revision" in state:
+    print(json.dumps({
+        "decision": "SELECT_OPTION", "rule": "confidence",
+        "selected_option": state["alternatives"][0]["id"],
+        "confidence": 0.9,
+        "detail": f"evidence={len(state.get('evidence', []))} revision=True"}))
+else:
+    print(json.dumps({
+        "decision": "ASK_USER", "rule": "evidence_insufficient",
+        "blocker_class": "facts_missing", "blocker_confidence": 0.9,
+        "evidence_sufficiency": 0.2,
+        "detail": f"evidence={len(state.get('evidence', []))} revision=False"}))
+'''
+
+
+def write_loop_case(path):
+    case = {
+        "id": "db_loop_resolvable",
+        "topic": "database",
+        "situation": "loop_resolvable",
+        "state": {
+            "goal": "Pick storage", "question": "Which storage fits?",
+            "known_constraints": [], "environment": {},
+            "evidence": ["one thin fact"],
+            "alternatives": [
+                {"id": "alpha", "name": "Alpha",
+                 "description": "First option.", "advantages": ["a"],
+                 "disadvantages": ["d"], "assumptions": []},
+                {"id": "beta", "name": "Beta",
+                 "description": "Second option.", "advantages": ["a"],
+                 "disadvantages": ["d"], "assumptions": []},
+            ],
+            "criteria": [],
+        },
+        "investigation": {
+            "injected_evidence": ["the app runs as a single local CLI tool"],
+            "phase1": {"rule": "evidence_insufficient",
+                       "blocker_class": "facts_missing"},
+            "phase2": {"acceptable_decisions": ["SELECT_OPTION"],
+                       "acceptable_selections": ["alpha"],
+                       "forbidden_selections": []},
+        },
+        "derived_from": None,
+    }
+    path.write_text(json.dumps(case), encoding="utf-8")
+
+
+@pytest.fixture
+def loop_stub(tmp_path):
+    path = tmp_path / "loop_stub_decide.py"
+    path.write_text(LOOP_STUB, encoding="utf-8")
+    return str(path)
+
+
+@pytest.fixture
+def loop_cases_dir(tmp_path):
+    directory = tmp_path / "loop_cases"
+    directory.mkdir()
+    write_loop_case(directory / "db_loop_resolvable.json")
+    return directory
+
+
+def test_loop_cases_run_two_phases(tmp_path, loop_stub, cases_dir,
+                                   loop_cases_dir, monkeypatch):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    out_dir = tmp_path / "out"
+    exit_code = run_fixed_state.main([
+        "--cases-dir", str(cases_dir), "--loop-cases-dir", str(loop_cases_dir),
+        "--decide-script", loop_stub, "--runs", "1",
+        "--out-dir", str(out_dir), "--allow-partial-set", "--interval", "0",
+    ])
+    assert exit_code == 0
+    records = [
+        json.loads(line)
+        for line in (out_dir / "fixed_state_runs.jsonl")
+        .read_text().strip().splitlines()
+    ]
+    assert len(records) == 4  # 2 base + 2 phases of the loop case
+    base_records = [r for r in records if r.get("case_kind") != "loop"]
+    assert len(base_records) == 2
+    for record in base_records:
+        assert "case_kind" not in record
+        assert "phase" not in record
+    phase1, phase2 = [r for r in records if r.get("case_kind") == "loop"]
+    assert phase1["phase"] == 1
+    assert phase1["resolution"]["rule"] == "evidence_insufficient"
+    assert phase1["classification"] == "asked"
+    assert phase2["phase"] == 2
+    assert phase2["resolution"]["decision"] == "SELECT_OPTION"
+    # The phase-2 state carried the injected evidence and the revision.
+    assert "revision=True" in phase2["resolution"]["detail"]
+    assert "evidence=2" in phase2["resolution"]["detail"]
+    environment = json.loads((out_dir / "environment.json").read_text())
+    assert environment["thresholds"]["sufficiency"] == 0.6
+    assert environment["thresholds"]["blocker_confidence"] == 0.5
+    assert environment["loop_cases"] == ["db_loop_resolvable"]
+    assert environment["total_api_calls"] == 4  # runs * (2 base + 2 phases)
+
+
+def test_dry_run_counts_loop_phases(tmp_path, loop_stub, cases_dir,
+                                    loop_cases_dir, capsys):
+    exit_code = run_fixed_state.main([
+        "--cases-dir", str(cases_dir), "--loop-cases-dir", str(loop_cases_dir),
+        "--decide-script", loop_stub, "--runs", "2", "--dry-run",
+        "--allow-partial-set",
+    ])
+    plan = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert plan["loop_cases"] == ["db_loop_resolvable"]
+    assert plan["total_api_calls"] == 2 * (2 + 2)
