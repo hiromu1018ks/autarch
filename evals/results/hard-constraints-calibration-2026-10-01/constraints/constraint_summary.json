@@ -1,0 +1,116 @@
+{
+  "counts": {
+    "pass": 21,
+    "fail": 0,
+    "unavailable": 0,
+    "incomplete": 0
+  },
+  "pass_rate": 1.0,
+  "verdicts": [
+    {
+      "case_id": "cost_verified",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "cost_verified",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "cost_verified",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "db_eligible",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "db_eligible",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "db_eligible",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_none",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_none",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_none",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_single",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_single",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_single",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_exhausted",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_exhausted",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_exhausted",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_resolved",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_resolved",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "env_unknown_resolved",
+      "run_index": 3,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "inference_invalid",
+      "run_index": 1,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "inference_invalid",
+      "run_index": 2,
+      "verdict": "pass"
+    },
+    {
+      "case_id": "inference_invalid",
+      "run_index": 3,
+      "verdict": "pass"
+    }
+  ]
+}
