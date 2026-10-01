@@ -56,3 +56,24 @@ class TestSkillMarkdown:
         assert "SELECT_OPTION_WITH_CAUTION" in text
         assert "PROVIDER_UNAVAILABLE" in text
         assert "INSUFFICIENT_OPTIONS" in text
+
+    def test_step8_documents_new_resolution_fields(self):
+        text = _read()
+        assert "evidence_sufficiency" in text
+        assert "blocker_class" in text
+        assert "blocker_confidence" in text
+
+    def test_ask_user_dispatches_on_blocker_class(self):
+        text = _read()
+        assert "evidence_insufficient" in text
+        assert "investigation_exhausted" in text
+        assert "material_bias" in text
+
+    def test_investigation_loop_instructions(self):
+        text = _read()
+        assert "investigate once" in text
+        assert '"revision"' in text
+        assert "exactly one more time" in text
+        assert "external documentation" in text
+        assert "Never invent facts" in text
+        assert "material_fix" in text

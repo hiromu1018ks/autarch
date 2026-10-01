@@ -146,8 +146,8 @@ failed to execute.
 
 stdout contains exactly one JSON object with: `decision`, `rule`,
 `selected_option`, `confidence`, `probability`, `probabilities`,
-`human_preference_probability`, `score_summary`, `reason`, `detail`,
-`model`.
+`human_preference_probability`, `score_summary`, `evidence_sufficiency`,
+`blocker_class`, `blocker_confidence`, `reason`, `detail`, `model`.
 
 `probabilities` are a probability distribution over the alternatives
 (they sum to about 1). They are NOT scores — never present them as
@@ -167,12 +167,52 @@ Same as Step 9, but state the uncertainty first in one short sentence
 
 ### Step 11 — ASK_USER
 
-Do NOT repeat the original technical question. Using the resolution
-`rule`, `score_summary`, `probabilities`, and your evidence, reduce the
-decision to the smallest question only the user can answer — usually one
-distinguishing factor. Present the options as a short list with one-line
-neutral descriptors, name the deciding factor, and ask only that.
-Example:
+Do NOT repeat the original technical question. Dispatch on `rule` and
+`blocker_class`:
+
+**`evidence_insufficient`, blocker `facts_missing`, no `revision` in the
+state — investigate once, then re-run.** Check repository configuration,
+code, and documentation first; if the repository does not answer the
+question, consult external documentation or web search. This whole
+investigation is one round. Append each discovered fact to `evidence`
+as a string with its source noted in one short phrase (example:
+`"the app runs as a single local CLI tool (pyproject.toml, README)"`).
+Never invent facts — if nothing is found, continue anyway. Then add to
+the state:
+
+```json
+"revision": {"round": 1, "action": "investigation",
+             "summary": "what you checked and what you found"}
+```
+
+and re-run decide.py on the updated state exactly one more time. If
+that second run returns `PROVIDER_UNAVAILABLE`, follow Step 12 — do
+not call Jev again.
+
+**`evidence_insufficient`, blocker `material_bias`, no `revision` —
+rebalance the material in the same single round.** Rewrite the
+alternative descriptions with the same structure and comparable level
+of detail, neutrally. Set `"revision": {"round": 1, "action":
+"material_fix", "summary": "..."}` and re-run decide.py once.
+
+**`investigation_exhausted` — the revision round is spent and the
+evidence is still insufficient.** Return to the user without another
+decide.py run: list what was confirmed (verified facts with sources)
+and what remains unverified, then ask the single deciding question as
+below.
+
+**Blocker `user_preference_unknown` or `balanced_tie`, or rule
+`human_preference`** — the decision depends on the user's taste,
+plans, or a deciding priority. Ask for that preference or priority
+directly instead of technical details.
+
+**Any other `rule`** (`low_confidence`, `probability_gap`,
+`choice_score_disagreement`) — using `rule`, `score_summary`,
+`probabilities`, and your evidence, reduce the decision to the
+smallest question only the user can answer — usually one
+distinguishing factor. Present the options as a short list with
+one-line neutral descriptors, name the deciding factor, and ask only
+that. Example:
 
 ```text
 Autarch could not decide this on technical merit alone.
@@ -186,8 +226,8 @@ B. Session Cookie — simplest for this same-origin web app
 Do you have such a plan, yes or no?
 ```
 
-If `rule` is `human_preference`, the decision depends on the user's taste
-or intent — ask for that preference directly instead of technical details.
+Whatever the branch: never select an option yourself when the engine
+says ASK_USER.
 
 ### Step 12 — PROVIDER_UNAVAILABLE
 
