@@ -133,6 +133,13 @@ def main(argv=None) -> int:
         cases = [case for case in cases if case["id"] in wanted]
     loop_cases = []
     if args.loop_cases_dir:
+        loop_dir = Path(args.loop_cases_dir)
+        if not loop_dir.is_dir() or not list(loop_dir.glob("*.json")):
+            print(
+                f"error: --loop-cases-dir {args.loop_cases_dir} has no case files",
+                file=sys.stderr,
+            )
+            return 2
         try:
             loop_cases = case_schema.load_loop_cases(args.loop_cases_dir)
         except case_schema.CaseError as error:

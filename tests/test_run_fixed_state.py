@@ -255,6 +255,20 @@ def test_loop_cases_run_two_phases(tmp_path, loop_stub, cases_dir,
     assert environment["total_api_calls"] == 4  # runs * (2 base + 2 phases)
 
 
+def test_missing_loop_cases_dir_fails_fast(tmp_path, stub_decide, cases_dir,
+                                           capsys):
+    out_dir = tmp_path / "out"
+    exit_code = run_fixed_state.main([
+        "--cases-dir", str(cases_dir),
+        "--loop-cases-dir", str(tmp_path / "nonexistent"),
+        "--decide-script", stub_decide, "--runs", "1",
+        "--out-dir", str(out_dir), "--allow-partial-set",
+    ])
+    assert exit_code == 2
+    assert "has no case files" in capsys.readouterr().err
+    assert not out_dir.exists()
+
+
 def test_dry_run_counts_loop_phases(tmp_path, loop_stub, cases_dir,
                                     loop_cases_dir, capsys):
     exit_code = run_fixed_state.main([

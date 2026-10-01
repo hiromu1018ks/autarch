@@ -256,6 +256,28 @@ def test_compare_to_produces_delta_table(tmp_path):
     assert "evidence_removed" in summary
 
 
+def test_missing_loop_cases_dir_exits_2(tmp_path, capsys):
+    cases_dir, baseline_dir = prepare(tmp_path)
+    exit_code = report_baseline.main([
+        "--baseline-dir", str(baseline_dir), "--cases-dir", str(cases_dir),
+        "--loop-cases-dir", str(tmp_path / "nonexistent"),
+    ])
+    assert exit_code == 2
+    assert "has no case files" in capsys.readouterr().err
+
+
+def test_compare_to_non_object_json_exits_2(tmp_path, capsys):
+    cases_dir, baseline_dir = prepare(tmp_path)
+    previous_path = tmp_path / "previous-baseline.json"
+    previous_path.write_text("[]", encoding="utf-8")
+    exit_code = report_baseline.main([
+        "--baseline-dir", str(baseline_dir), "--cases-dir", str(cases_dir),
+        "--compare-to", str(previous_path),
+    ])
+    assert exit_code == 2
+    assert "comparison baseline must be a JSON object" in capsys.readouterr().err
+
+
 def test_compare_to_missing_file_exits_2(tmp_path, capsys):
     cases_dir, baseline_dir = prepare(tmp_path)
     exit_code = report_baseline.main([

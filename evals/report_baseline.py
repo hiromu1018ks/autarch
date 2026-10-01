@@ -366,6 +366,13 @@ def main(argv=None) -> int:
         return 2
     loop_cases = None
     if args.loop_cases_dir:
+        loop_dir = Path(args.loop_cases_dir)
+        if not loop_dir.is_dir() or not list(loop_dir.glob("*.json")):
+            print(
+                f"error: --loop-cases-dir {args.loop_cases_dir} has no case files",
+                file=sys.stderr,
+            )
+            return 2
         try:
             loop_cases = case_schema.load_loop_cases(args.loop_cases_dir)
         except case_schema.CaseError as error:
@@ -391,6 +398,12 @@ def main(argv=None) -> int:
             print(
                 f"error: cannot read comparison baseline "
                 f"({type(error).__name__})",
+                file=sys.stderr,
+            )
+            return 2
+        if not isinstance(previous, dict):
+            print(
+                "error: comparison baseline must be a JSON object",
                 file=sys.stderr,
             )
             return 2

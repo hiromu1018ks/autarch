@@ -135,7 +135,8 @@ python3 "$SKILL_DIR/scripts/decide.py" --state-file "$STATE_FILE"
 
 Requires the `TYPESAFE_API_KEY` environment variable. Optional flags:
 `--model jev-latest --auto-select 0.85 --review 0.60 --min-gap 0.15
---human-preference 0.70 --timeout 30 --endpoint https://api.typesafe.ai`.
+--human-preference 0.70 --sufficiency 0.60 --blocker-confidence 0.50
+--timeout 30 --endpoint https://api.typesafe.ai`.
 
 Exit codes: `0` = a resolution JSON was printed to stdout; `2` = usage
 error, missing state file, or malformed JSON; `1` = internal error. For

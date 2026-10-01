@@ -57,6 +57,11 @@ class TestSkillMarkdown:
         assert "PROVIDER_UNAVAILABLE" in text
         assert "INSUFFICIENT_OPTIONS" in text
 
+    def test_step7_documents_new_threshold_flags(self):
+        text = _read()
+        assert "--sufficiency" in text
+        assert "--blocker-confidence" in text
+
     def test_step8_documents_new_resolution_fields(self):
         text = _read()
         assert "evidence_sufficiency" in text
