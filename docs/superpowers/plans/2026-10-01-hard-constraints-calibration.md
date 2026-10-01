@@ -117,9 +117,11 @@
 
 - [ ] **Step 1:** グリッド=5×3×3×2、固定値と順序、順位の辞書式規則を assert。unsafe、根拠不足の見逃し、loop 位相2の失敗、明確ケースの不要質問、変更数、現行順序、現行値からの絶対差の合計、グリッド記載順の順に比較する。既存記録の欠けた blocker は unknown と表示し、完全 replay の結果を作らない。
 - [ ] **Step 2:** `python3 -m pytest tests/test_calibrate_thresholds.py -v` が FAIL。
-- [ ] **Step 3:** describe は状況・位相別分布と欠測を出力。search は Task 4 の snapshot と replay を使う。凍結ポリシーには学習用の現行・候補の件数集計と採用判定を保存し、validate がこの比較結果と検証用結果を合わせて採用条件を検査する。ASK_USER 期待の状況は info_missing/preference_needed/evidence_removed、loop は既存 phase 期待値を使う。閾値より低い confidence による WITH_CAUTION を完了とする既存指標定義を守る。採用条件は仕様 §5 をそのまま実装し、3有効実行/ケースを要求する。
+- [ ] **Step 3:** describe は状況・位相別分布と欠測を出力。search は Task 4 の snapshot と replay を使う。学習用採用条件を可否制約として先に適用し、通過候補の中から仕様 §5 の辞書式規則で一つ選ぶ。通過候補なしなら rejected とし、全体順位1位の不採用記録を残す。凍結ポリシーには学習用の現行・候補の件数集計と採用判定を保存し、validate がこの比較結果と検証用結果を合わせて採用条件を検査する。ASK_USER 期待の状況は info_missing/preference_needed/evidence_removed、loop は既存 phase 期待値を使う。閾値より低い confidence による WITH_CAUTION を完了とする既存指標定義を守る。採用条件は仕様 §5 をそのまま実装し、3有効実行/ケースを要求する。
 - [ ] **Step 4:** 同点規則、境界 `<` と `>=`、unsafe 増加、clear 回帰、db loop 退行、検証用14/15、provider 障害、重複 run_index、候補設定不一致、検証用不足で rejected を assert。対象テストが PASS。
 - [ ] **Step 5:** 対象ファイルを commit: `feat: compare threshold policies with explicit adoption gates`。
+
+2026-10-01 controller ruling: 全体順位1位の不採用と、下位18設定の学習条件通過が実測で判明したため、Task 6/7 の選択順序を明確化した。数値条件は不変。規則修正は失敗テスト→実装→成功→commit→レビューを経てから、同じ保存済み信号を別 out-dir で探索する。旧出力を上書きしない。最終候補の凍結後、検証用結果による再選択は行わない。
 
 ### Task 7: 検証用ケースを凍結して実測する
 
@@ -139,7 +141,7 @@ python3 evals/run_constraint_cases.py --cases-dir evals/cases_constraints --out-
 
 同名ディレクトリが存在したら既存を上書きせず末尾 -2 以降を選び、以後すべてのコマンドで同じルートを使う。provider 障害は既存 runner の再試行上限を維持し、不足した有効実行だけ記録を分けて追加する。
 
-- [ ] **Step 5:** `python3 evals/calibrate_thresholds.py search --manifest evals/cases_calibration/metadata/manifest.json --cases-dir evals/cases --loop-cases-dir evals/cases_loop --runs-file <training/fixed_state_runs.jsonl> --out-dir <root/search>` で候補を選ぶ。候補設定と manifest hash を selected-policy.json に凍結し commit。学習用の採用条件不成立なら rejected を記録し、検証用へ進まず現行値を維持する。
+- [ ] **Step 5:** `python3 evals/calibrate_thresholds.py search --manifest evals/cases_calibration/metadata/manifest.json --cases-dir evals/cases --loop-cases-dir evals/cases_loop --runs-file <training/fixed_state_runs.jsonl> --out-dir <root/search>` で、学習用可否制約を通過した候補の中から辞書式で一つ選ぶ。候補設定と manifest hash を selected-policy.json に凍結し commit。学習用可否制約の通過候補がなければ rejected を記録し、検証用へ進まず現行値を維持する。
 - [ ] **Step 6:** 候補が成立した場合、選択値を CLI の明示フラグとして渡し、検証用10ケースを `run_fixed_state.py --cases-dir evals/cases_calibration --allow-partial-set --capture-evaluation --runs 3 --out-dir <root/validation>` で実行。`python3 evals/calibrate_thresholds.py validate --policy-file <selected-policy.json> --manifest <metadata/manifest.json> --runs-file <validation/fixed_state_runs.jsonl> --out-dir <root/validation-report>` が accepted=true の場合だけ Task 8 の既定値更新を許す。結果を見た調整・再探索は禁止。
 - [ ] **Step 7:** 分布、ケース・設定の凍結、判定結果、費用・モデル名・日時・欠測を notes.md に記録して commit: `test: record constraint and calibration evaluation results`。
 

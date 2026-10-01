@@ -616,16 +616,22 @@ def main(argv=None):
                    for case in validation_cases):
                 raise ValueError("validation state/expectations must differ from training cases")
             ranked = rank_policies(training_cases, runs)
-            candidate = ranked[0]
             reference = next(row for row in ranked if row["thresholds"] == REFERENCE_POLICY["thresholds"]
                              and row["gate_order"] == REFERENCE_POLICY["gate_order"])
             if not reference["complete"]:
                 raise ValueError("search requires three valid reference runs per case phase")
+            feasible = [row for row in ranked if not _training_reasons(reference, row)]
+            # Preserve the rejected global winner if no candidate is feasible.
+            # Held-out validation never participates in this single selection.
+            candidate = feasible[0] if feasible else ranked[0]
             reasons = _training_reasons(reference, candidate)
             case_hashes = {case["id"]: _json_hash(case) for case in training_cases}
             policy = {"schema_version": 1, "frozen_at": datetime.now(timezone.utc).isoformat(), "thresholds": candidate["thresholds"], "gate_order": candidate["gate_order"],
                       "training": {"reference": reference, "candidate": candidate,
                                    "adoption": {"accepted": not reasons, "reasons": reasons}},
+                      "selection": {"rule": "training_feasible_then_lexicographic_v1",
+                                    "eligible_policy_count": len(feasible),
+                                    "overall_rank": ranked.index(candidate) + 1},
                       "training_case_hash": _json_hash(case_hashes), "training_runs_hash": _file_hash(args.runs_file),
                       "training_case_hashes": case_hashes,
                       "manifest_hash": manifest_hash, "metadata": _run_metadata(runs)}

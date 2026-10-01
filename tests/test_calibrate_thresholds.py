@@ -717,3 +717,57 @@ def test_policy_requires_freeze_after_training(frozen_calibration_policy, timest
     policy["frozen_at"] = timestamp
     with pytest.raises(ValueError, match="frozen_at|training"):
         cal._validate_selected_policy(policy)
+
+
+def test_search_selects_best_training_feasible_policy_before_freeze(tmp_path):
+    import json
+    root, training, manifest, _ = cli_fixture(tmp_path)
+    runs = [json.loads(line) for line in training.read_text().splitlines()]
+    for run in runs:
+        parsed = run["resolution"]["evaluation_snapshot"]["parsed"]
+        if ("constraint_clear" in run["case_id"] or "detail_asymmetry" in run["case_id"]
+                or "reorder" in run["case_id"] or "violating_candidate" in run["case_id"]
+                or ("loop" in run["case_id"] and run["phase"] == 2)):
+            parsed.update(evidence_sufficiency=0.82, blocker_confidence=0.35)
+        if run["case_id"] == "auth_preference_needed":
+            parsed.update(evidence_sufficiency=0.82, blocker_confidence=0.35, human_preference=0.1)
+    training.write_text("".join(json.dumps(run) + "\n" for run in runs))
+    out = tmp_path / "search"
+    assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
+                     "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 0
+    ranking = json.loads((out / "ranking.json").read_text())
+    policy = json.loads((out / "selected-policy.json").read_text())
+    # Global rank one removes all unsafe selections by stopping valid clear cases.
+    assert ranking[0]["counts"]["unsafe"] == 0
+    assert ranking[0]["counts"]["clear_completed"] == 0
+    # Feasibility precedes ordering: preserve all clear and db-loop successes,
+    # reduce six evidence misses, and then use the unchanged tie-break rules.
+    assert policy["training"]["adoption"] == {"accepted": True, "reasons": []}
+    assert policy["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
+    assert policy["gate_order"] == "human_first"
+    assert policy["training"]["candidate"]["grid_index"] == 56
+    assert policy["training"]["candidate"]["counts"]["clear_completed"] == 33
+    assert policy["training"]["candidate"]["counts"]["db_loop_passes"] == 3
+    assert policy["training"]["candidate"]["counts"]["evidence_misses"] == 0
+    assert policy["training"]["reference"]["counts"]["evidence_misses"] == 6
+    assert policy["selection"]["rule"] == "training_feasible_then_lexicographic_v1"
+    assert policy["selection"]["eligible_policy_count"] > 0
+    assert policy["selection"]["overall_rank"] > 1
+
+
+def test_search_records_zero_feasible_policies_without_fabricating_acceptance(tmp_path):
+    import json
+    root, training, manifest, _ = cli_fixture(tmp_path)
+    runs = [json.loads(line) for line in training.read_text().splitlines()]
+    for run in runs:
+        if run["case_id"] == "db_constraint_clear":
+            run["resolution"]["evaluation_snapshot"]["parsed"]["evidence_sufficiency"] = 0.82
+    training.write_text("".join(json.dumps(run) + "\n" for run in runs))
+    out = tmp_path / "search"
+    assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
+                     "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 0
+    policy = json.loads((out / "selected-policy.json").read_text())
+    assert policy["selection"] == {"rule": "training_feasible_then_lexicographic_v1",
+                                  "eligible_policy_count": 0, "overall_rank": 1}
+    assert not policy["training"]["adoption"]["accepted"]
+    assert "clear completions decreased" in policy["training"]["adoption"]["reasons"]
