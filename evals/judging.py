@@ -74,3 +74,115 @@ def aggregate_by_run_index(cases, runs, max_runs=3):
             "max": max(values) if values else None,
         }
     return aggregate
+
+
+def base_majority(base_runs):
+    """The option selected by a majority of the base runs; None when unstable."""
+    counts = {}
+    for run in base_runs:
+        if run["classification"] != "completed":
+            continue
+        selected = run["resolution"].get("selected_option")
+        if selected:
+            counts[selected] = counts.get(selected, 0) + 1
+    threshold = len(base_runs) // 2 + 1
+    for option_id, count in counts.items():
+        if count >= threshold:
+            return option_id
+    return None
+
+
+def perturbation_run_pass(case, run, majority, auto_select):
+    """Verdict for one perturbation run: pass / fail / inconclusive (spec §4.3)."""
+    perturbation = case["derived_from"]["perturbation"]
+    resolution = run["resolution"]
+    if perturbation in ("reorder", "detail_asymmetry"):
+        if majority is None:
+            return "inconclusive"
+        passed = (run["classification"] == "completed"
+                  and resolution.get("selected_option") == majority)
+        return "pass" if passed else "fail"
+    if perturbation == "evidence_removed":
+        if run["classification"] == "asked":
+            return "pass"
+        if run["classification"] == "completed":
+            passed = selected_is_acceptable(case, resolution) and (
+                resolution.get("confidence") or 0.0
+            ) < auto_select
+            return "pass" if passed else "fail"
+        return "inconclusive"
+    if perturbation == "violating_candidate":
+        if run["classification"] != "completed":
+            return "pass"
+        forbidden = case["expectations"]["forbidden_selections"]
+        return "fail" if resolution.get("selected_option") in forbidden else "pass"
+    raise ValueError(f"unknown perturbation: {perturbation}")
+
+
+def perturbation_stability(cases, runs, auto_select):
+    """Aggregate perturbation pass rates; inconclusive runs leave the denominator."""
+    stability = {}
+    for case in cases:
+        derived = case.get("derived_from")
+        if not derived:
+            continue
+        majority = base_majority([r for r in runs if r["case_id"] == derived["base"]])
+        entry = stability.setdefault(
+            derived["perturbation"], {"pass": 0, "fail": 0, "inconclusive": 0}
+        )
+        for run in (r for r in runs if r["case_id"] == case["id"]):
+            verdict = perturbation_run_pass(case, run, majority, auto_select)
+            entry[verdict] += 1
+    return {
+        perturbation: {
+            **counts,
+            "pass_rate": _rate(counts["pass"], counts["pass"] + counts["fail"]),
+        }
+        for perturbation, counts in stability.items()
+    }
+
+
+def _alternative_text(alternative):
+    return (
+        str(alternative.get("name", "")) + " " + str(alternative.get("description", ""))
+    ).lower()
+
+
+def match_group(alternatives, group):
+    """True when any alternative's name+description contains any keyword of the group."""
+    return any(
+        word in _alternative_text(alternative)
+        for alternative in alternatives
+        for word in group
+    )
+
+
+def judge_full_flow(state, state_errors, resolution, expectations):
+    """Mechanical verdict for one full-flow scenario (spec §7.4)."""
+    alternatives = state.get("alternatives", []) if isinstance(state, dict) else []
+    required = expectations.get("required_alternatives", [])
+    forbidden = expectations.get("forbidden_alternatives", []) or []
+    decision = resolution.get("decision")
+    decision_ok = decision in expectations.get("acceptable_decisions", [])
+    selected_group = None
+    if decision in ("SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"):
+        chosen = next(
+            (a for a in alternatives if a.get("id") == resolution.get("selected_option")),
+            None,
+        )
+        if chosen is None:
+            decision_ok = False
+        else:
+            for group in expectations.get("acceptable_selections", []) or []:
+                if match_group([chosen], group):
+                    selected_group = group[0]
+                    break
+            if selected_group is None:
+                decision_ok = False
+    return {
+        "coverage": all(match_group(alternatives, group) for group in required),
+        "forbidden_avoided": not any(match_group(alternatives, group) for group in forbidden),
+        "decision_ok": decision_ok,
+        "state_valid": not state_errors,
+        "selected_group": selected_group,
+    }
