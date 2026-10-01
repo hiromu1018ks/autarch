@@ -315,3 +315,53 @@ raise SystemExit(decide.main())
         "--interval", "0", "--decide-script", str(script)]) == 0
     assert not marker.exists()
     assert json.loads((out / "constraint_summary.json").read_text())["counts"]["pass"] == 4
+
+
+@pytest.mark.parametrize("existing_name", [
+    "environment.json", "constraint_runs.jsonl", "constraint_summary.json",
+    "fixed_state_runs.jsonl", "full_flow_runs.jsonl", "baseline.json", "SUMMARY.md",
+])
+def test_runner_rejects_existing_results_before_writing(tmp_path, monkeypatch, capsys, existing_name):
+    runner = module("run_constraint_cases")
+    case = fixture_case()
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    write_case(cases_dir, case)
+    out = tmp_path / "baseline"
+    out.mkdir()
+    (out / existing_name).write_bytes(b'preserved baseline evidence\n')
+    before = {path.name: path.read_bytes() for path in out.iterdir()}
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    calls = []
+    def stub(case_arg, args, state_dir, state=None, phase=None):
+        calls.append(phase)
+        return {**record(case_arg, phase), "attempt": 1, "latency_ms": 1}
+    monkeypatch.setattr(runner.run_fixed_state, "run_with_retry", stub)
+    result = runner.main(["--cases-dir", str(cases_dir), "--out-dir", str(out),
+                          "--runs", "1", "--interval", "0"])
+    after = {path.name: path.read_bytes() for path in out.iterdir()}
+    assert after == before  # Existing environment bytes and file set are preserved.
+    assert result == 2
+    assert "fresh out-dir" in capsys.readouterr().err
+    assert calls == []
+
+
+@pytest.mark.parametrize("create_empty_dir", [False, True])
+def test_runner_accepts_new_and_empty_output_directories(tmp_path, monkeypatch, create_empty_dir):
+    runner = module("run_constraint_cases")
+    case = fixture_case()
+    cases_dir = tmp_path / "cases"
+    cases_dir.mkdir()
+    write_case(cases_dir, case)
+    out = tmp_path / "out"
+    if create_empty_dir:
+        out.mkdir()
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    def stub(case_arg, args, state_dir, state=None, phase=None):
+        return {**record(case_arg, phase), "attempt": 1, "latency_ms": 1}
+    monkeypatch.setattr(runner.run_fixed_state, "run_with_retry", stub)
+    assert runner.main(["--cases-dir", str(cases_dir), "--out-dir", str(out),
+                        "--runs", "1", "--interval", "0"]) == 0
+    assert {path.name for path in out.iterdir()} == {
+        "constraint_runs.jsonl", "constraint_summary.json", "environment.json"}
+    assert json.loads((out / "constraint_summary.json").read_text())["counts"]["pass"] == 1

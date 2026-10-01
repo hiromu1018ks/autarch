@@ -60,11 +60,11 @@ def main(argv=None) -> int:
         return 2
     out_dir = (Path(args.out_dir) if args.out_dir else
                runner_common.next_baseline_dir(EVALS_DIR / "results", "constraints-" + date.today().isoformat()))
+    if out_dir.is_dir() and any(out_dir.iterdir()):
+        print(f"error: {out_dir} is not empty; choose a fresh out-dir", file=sys.stderr)
+        return 2
     out_dir.mkdir(parents=True, exist_ok=True)
     runs_path = out_dir / "constraint_runs.jsonl"
-    if runs_path.exists():
-        print(f"error: {runs_path} already exists; choose a fresh out-dir", file=sys.stderr)
-        return 2
     started = runner_common.utc_now()
     records = []
     with tempfile.TemporaryDirectory() as state_dir:
