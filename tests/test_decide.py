@@ -18,6 +18,19 @@ def test_module_exposes_constants():
     assert decide.CHOICE_INSTRUCTIONS == (
         "Select the option that best satisfies the goal and constraints."
     )
+    assert decide.SUFFICIENCY_INSTRUCTIONS == (
+        "Is there enough evidence in the state to select an option automatically?"
+    )
+    assert decide.BLOCKER_INSTRUCTIONS == (
+        "The decision cannot be resolved automatically on the provided "
+        "material. Select the primary blocker."
+    )
+    assert decide.BLOCKER_CLASSES == (
+        "user_preference_unknown",
+        "facts_missing",
+        "material_bias",
+        "balanced_tie",
+    )
     assert decide.DEFAULT_MODEL == "jev-latest"
     assert decide.DEFAULT_ENDPOINT == "https://api.typesafe.ai"
     assert decide.DEFAULT_AUTO_SELECT == 0.85
@@ -310,6 +323,8 @@ class TestBuildRequest:
         assert set(questions) == {
             "requires_human_preference",
             "best_option",
+            "evidence_sufficiency",
+            "blocker_class",
             "score__fit__option_a",
             "score__fit__option_b",
         }
@@ -351,6 +366,8 @@ class TestBuildRequest:
         assert set(payload["questions"]) == {
             "requires_human_preference",
             "best_option",
+            "evidence_sufficiency",
+            "blocker_class",
         }
 
     def test_matrix_covers_all_criteria_times_alternatives(self):
@@ -364,7 +381,7 @@ class TestBuildRequest:
             f"score__c{i}__option_{o}" for i in range(3) for o in ("a", "b")
         }
         assert score_names <= set(payload["questions"])
-        assert len(payload["questions"]) == 2 + 6
+        assert len(payload["questions"]) == 4 + 6
 
     def test_request_builder_handles_cjk(self):
         state = _valid_state()
@@ -472,7 +489,8 @@ def test_provider_error_is_exception():
     assert issubclass(decide.ProviderError, Exception)
 
 
-def make_answers(state, noul=0.1, choice=None, confidence=0.9, probabilities=None):
+def make_answers(state, noul=0.1, choice=None, confidence=0.9, probabilities=None,
+                 sufficiency=0.9, blocker="facts_missing", blocker_confidence=0.9):
     """Build a consistent answers dict whose winner is `choice`."""
     choice = choice or state["alternatives"][0]["id"]
     if probabilities is None:
@@ -480,8 +498,19 @@ def make_answers(state, noul=0.1, choice=None, confidence=0.9, probabilities=Non
         share = 0.15 / len(losers) if losers else 0.0
         probabilities = {a["id"]: (0.85 if a["id"] == choice else share)
                          for a in state["alternatives"]}
+    blocker_probabilities = {
+        name: (0.7 if name == blocker else 0.1)
+        for name in decide.BLOCKER_CLASSES
+    }
     answers = {
         "requires_human_preference": {"type": "noul", "noul": noul},
+        "evidence_sufficiency": {"type": "noul", "noul": sufficiency},
+        "blocker_class": {
+            "type": "choice",
+            "choice": blocker,
+            "confidence": blocker_confidence,
+            "probabilities": blocker_probabilities,
+        },
         "best_option": {
             "type": "choice",
             "choice": choice,
@@ -639,6 +668,83 @@ class TestParseAnswers:
         answers = make_answers(state, confidence=True)
         with pytest.raises(decide.ProviderError):
             decide.parse_answers(answers_body(answers), state)
+
+
+class TestParseAnswersNewQuestions:
+    def test_parsed_values_present(self):
+        state = _valid_state()
+        answers = make_answers(state, sufficiency=0.25, blocker="material_bias",
+                               blocker_confidence=0.8)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        assert parsed["evidence_sufficiency"] == 0.25
+        assert parsed["blocker_class"] == "material_bias"
+        assert parsed["blocker_confidence"] == 0.8
+
+    def test_missing_sufficiency_answer_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        del answers["evidence_sufficiency"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_sufficiency_out_of_range_raises(self):
+        state = _valid_state()
+        for bad in (-0.01, 1.01, True):
+            answers = make_answers(state, sufficiency=bad)
+            with pytest.raises(decide.ProviderError):
+                decide.parse_answers(answers_body(answers), state)
+
+    def test_missing_blocker_answer_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        del answers["blocker_class"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_unknown_blocker_class_raises(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["blocker_class"]["choice"] = "mood_unknown"
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_blocker_confidence_out_of_range_and_boolean_rejected(self):
+        state = _valid_state()
+        for bad in (-0.1, 1.1, True):
+            answers = make_answers(state, blocker_confidence=bad)
+            with pytest.raises(decide.ProviderError):
+                decide.parse_answers(answers_body(answers), state)
+
+    def test_blocker_probabilities_must_cover_every_class(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        del answers["blocker_class"]["probabilities"]["balanced_tie"]
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_blocker_choice_not_highest_probability_raises(self):
+        state = _valid_state()
+        answers = make_answers(state, blocker="facts_missing")
+        answers["blocker_class"]["probabilities"] = {
+            "user_preference_unknown": 0.1,
+            "facts_missing": 0.2,
+            "material_bias": 0.1,
+            "balanced_tie": 0.6,
+        }
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_new_questions_required_in_build_request(self):
+        payload = decide.build_request(_valid_state(), "m")
+        assert payload["questions"]["evidence_sufficiency"] == {
+            "type": "noul",
+            "instructions": decide.SUFFICIENCY_INSTRUCTIONS,
+        }
+        blocker = payload["questions"]["blocker_class"]
+        assert blocker["type"] == "choice"
+        assert blocker["instructions"] == decide.BLOCKER_INSTRUCTIONS
+        assert blocker["criteria"] == decide.BLOCKER_DESCRIPTIONS
+        assert set(blocker["criteria"]) == set(decide.BLOCKER_CLASSES)
 
 
 def _thresholds():

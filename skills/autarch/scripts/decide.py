@@ -57,6 +57,37 @@ NOUL_INSTRUCTIONS = (
 CHOICE_INSTRUCTIONS = (
     "Select the option that best satisfies the goal and constraints."
 )
+SUFFICIENCY_INSTRUCTIONS = (
+    "Is there enough evidence in the state to select an option automatically?"
+)
+BLOCKER_INSTRUCTIONS = (
+    "The decision cannot be resolved automatically on the provided "
+    "material. Select the primary blocker."
+)
+BLOCKER_CLASSES = (
+    "user_preference_unknown",
+    "facts_missing",
+    "material_bias",
+    "balanced_tie",
+)
+BLOCKER_DESCRIPTIONS = {
+    "user_preference_unknown": (
+        "The user's preference, plan, or intent is needed and not present "
+        "in the state"
+    ),
+    "facts_missing": (
+        "A technical fact needed to compare the alternatives is missing "
+        "from the evidence"
+    ),
+    "material_bias": (
+        "Alternatives or criteria are described unevenly in a way that "
+        "biases the comparison"
+    ),
+    "balanced_tie": (
+        "The alternatives are evenly matched on the provided material; "
+        "a deciding priority is needed"
+    ),
+}
 
 DEFAULT_MODEL = "jev-latest"
 DEFAULT_ENDPOINT = "https://api.typesafe.ai"
@@ -259,6 +290,15 @@ def build_request(state: dict, model: str) -> dict:
                 for alternative in alternatives
             },
         },
+        "evidence_sufficiency": {
+            "type": "noul",
+            "instructions": SUFFICIENCY_INSTRUCTIONS,
+        },
+        "blocker_class": {
+            "type": "choice",
+            "instructions": BLOCKER_INSTRUCTIONS,
+            "criteria": dict(BLOCKER_DESCRIPTIONS),
+        },
     }
     for criterion in criteria:
         for alternative in alternatives:
@@ -331,6 +371,43 @@ def parse_answers(body: bytes, state: dict) -> dict:
             "best_option.choice does not match the highest probability"
         )
 
+    sufficiency_answer = answers.get("evidence_sufficiency")
+    if (not isinstance(sufficiency_answer, dict)
+            or sufficiency_answer.get("type") != "noul"):
+        raise ProviderError(
+            "evidence_sufficiency answer is missing or has wrong type"
+        )
+    evidence_sufficiency = _require_number(
+        sufficiency_answer.get("noul"), 0.0, 1.0, "evidence_sufficiency.noul"
+    )
+
+    blocker_answer = answers.get("blocker_class")
+    if (not isinstance(blocker_answer, dict)
+            or blocker_answer.get("type") != "choice"):
+        raise ProviderError("blocker_class answer is missing or has wrong type")
+    blocker = blocker_answer.get("choice")
+    if blocker not in BLOCKER_CLASSES:
+        raise ProviderError("blocker_class.choice is not one of the blocker classes")
+    blocker_confidence = _require_number(
+        blocker_answer.get("confidence"), 0.0, 1.0, "blocker_class.confidence"
+    )
+    raw_blocker_probabilities = blocker_answer.get("probabilities")
+    if (not isinstance(raw_blocker_probabilities, dict)
+            or set(raw_blocker_probabilities) != set(BLOCKER_CLASSES)):
+        raise ProviderError(
+            "blocker_class.probabilities must cover every blocker class"
+        )
+    blocker_probabilities = {
+        name: _require_number(
+            value, 0.0, 1.0, f"blocker_class.probabilities[{name}]"
+        )
+        for name, value in raw_blocker_probabilities.items()
+    }
+    if blocker_probabilities[blocker] != max(blocker_probabilities.values()):
+        raise ProviderError(
+            "blocker_class.choice does not match the highest probability"
+        )
+
     scores: dict[str, dict[str, float]] = {}
     for criterion in criteria:
         for alternative in state["alternatives"]:
@@ -359,6 +436,9 @@ def parse_answers(body: bytes, state: dict) -> dict:
         "confidence": confidence,
         "probabilities": probabilities,
         "scores": scores,
+        "evidence_sufficiency": evidence_sufficiency,
+        "blocker_class": blocker,
+        "blocker_confidence": blocker_confidence,
     }
 
 
