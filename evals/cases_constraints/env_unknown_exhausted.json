@@ -1,0 +1,176 @@
+{
+  "id": "env_unknown_exhausted",
+  "topic": "deployment",
+  "state": {
+    "goal": "Choose storage for a local Python CLI with 10,000 records and transactional multi-record updates",
+    "question": "Which storage best fits the stated environment and query workload?",
+    "known_constraints": [
+      "Multi-record changes must be atomic even after a power failure."
+    ],
+    "environment": {
+      "language": "Python",
+      "deployment": "single local process"
+    },
+    "evidence": [
+      "Scenario premise: single-user CLI; indexed filtering and atomic multi-record updates are preferred.",
+      "Product capability facts are checked in evidence_records."
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "SQLite",
+        "description": "Embedded SQLite for a local Python CLI, using SQL queries and transactions.",
+        "advantages": [
+          "Atomic transactions",
+          "Indexed SQL queries",
+          "No server process"
+        ],
+        "disadvantages": [
+          "Not a multi-host service"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "json_files",
+        "name": "Local JSON files",
+        "description": "Existing JSON persistence wrapper whose crash-safe multi-record update implementation has not been supplied.",
+        "advantages": [
+          "Inspectable files",
+          "No database server"
+        ],
+        "disadvantages": [
+          "Custom query and consistency logic"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "query_and_integrity",
+        "name": "Querying and data integrity",
+        "weight": 0.7,
+        "rubric": [
+          "Manual implementation",
+          "Partial support",
+          "Built-in indexed SQL and transactions"
+        ]
+      },
+      {
+        "id": "operational_burden",
+        "name": "Operational burden",
+        "weight": 0.3,
+        "rubric": [
+          "Server administration",
+          "Extra application code",
+          "Minimal local setup"
+        ]
+      }
+    ],
+    "evidence_records": [
+      {
+        "id": "sqlite_atomic",
+        "fact": "SQLite transactions remain atomic and durable across application or OS crashes and power failure.",
+        "source": "https://www.sqlite.org/transactional.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      }
+    ],
+    "hard_constraints": [
+      {
+        "id": "atomic_updates",
+        "description": "Multi-record changes must be atomic even after a power failure.",
+        "assessments": {
+          "sqlite": {
+            "status": "met",
+            "evidence_ids": [
+              "sqlite_atomic"
+            ]
+          },
+          "json_files": {
+            "status": "unknown",
+            "evidence_ids": []
+          }
+        }
+      }
+    ]
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "expectations": {
+        "decision": "ASK_USER",
+        "rule": "constraint_unverified",
+        "eligible_option_ids": [
+          "sqlite"
+        ],
+        "excluded_option_ids": [],
+        "unknown_assessments": [
+          {
+            "option_id": "json_files",
+            "constraint_id": "atomic_updates"
+          }
+        ],
+        "selected_option": null
+      }
+    },
+    {
+      "phase": 2,
+      "expectations": {
+        "decision": "ASK_USER",
+        "rule": "investigation_exhausted",
+        "eligible_option_ids": [
+          "sqlite"
+        ],
+        "excluded_option_ids": [],
+        "unknown_assessments": [
+          {
+            "option_id": "json_files",
+            "constraint_id": "atomic_updates"
+          }
+        ],
+        "selected_option": null
+      }
+    }
+  ],
+  "phase2": {
+    "evidence_records": [
+      {
+        "id": "sqlite_atomic",
+        "fact": "SQLite transactions remain atomic and durable across application or OS crashes and power failure.",
+        "source": "https://www.sqlite.org/transactional.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      },
+      {
+        "id": "sqlite_serverless",
+        "fact": "SQLite performs database I/O within the application process without a separate server.",
+        "source": "https://www.sqlite.org/serverless.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      }
+    ],
+    "hard_constraints": [
+      {
+        "id": "atomic_updates",
+        "description": "Multi-record changes must be atomic even after a power failure.",
+        "assessments": {
+          "sqlite": {
+            "status": "met",
+            "evidence_ids": [
+              "sqlite_atomic"
+            ]
+          },
+          "json_files": {
+            "status": "unknown",
+            "evidence_ids": []
+          }
+        }
+      }
+    ],
+    "revision": {
+      "round": 1,
+      "action": "investigation",
+      "summary": "Confirmed SQLite atomicity; no implementation or crash test for the existing JSON wrapper was available."
+    }
+  }
+}

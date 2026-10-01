@@ -1,0 +1,216 @@
+{
+  "id": "env_unknown_resolved",
+  "topic": "deployment",
+  "state": {
+    "goal": "Choose storage for a local Python CLI with 10,000 records and transactional multi-record updates",
+    "question": "Which storage best fits the stated environment and query workload?",
+    "known_constraints": [
+      "Must access local storage without a separate database server process."
+    ],
+    "environment": {
+      "language": "Python",
+      "deployment": "single local process"
+    },
+    "evidence": [
+      "Scenario premise: single-user CLI; indexed filtering and atomic multi-record updates are preferred.",
+      "Product capability facts are checked in evidence_records."
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "SQLite",
+        "description": "Embedded SQLite for a local Python CLI, using SQL queries and transactions.",
+        "advantages": [
+          "Atomic transactions",
+          "Indexed SQL queries",
+          "No server process"
+        ],
+        "disadvantages": [
+          "Not a multi-host service"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "json_files",
+        "name": "Local JSON files",
+        "description": "Python json serialization to ordinary local files; consistency across several files is application code.",
+        "advantages": [
+          "Inspectable files",
+          "No database server"
+        ],
+        "disadvantages": [
+          "Custom query and consistency logic"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "postgres",
+        "name": "Local PostgreSQL",
+        "description": "A PostgreSQL server running on the same machine as the client.",
+        "advantages": [
+          "SQL and transactions"
+        ],
+        "disadvantages": [
+          "Requires a separate server process"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "query_and_integrity",
+        "name": "Querying and data integrity",
+        "weight": 0.7,
+        "rubric": [
+          "Manual implementation",
+          "Partial support",
+          "Built-in indexed SQL and transactions"
+        ]
+      },
+      {
+        "id": "operational_burden",
+        "name": "Operational burden",
+        "weight": 0.3,
+        "rubric": [
+          "Server administration",
+          "Extra application code",
+          "Minimal local setup"
+        ]
+      }
+    ],
+    "evidence_records": [
+      {
+        "id": "sqlite_serverless",
+        "fact": "SQLite performs database I/O within the application process without a separate server.",
+        "source": "https://www.sqlite.org/serverless.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      },
+      {
+        "id": "postgres_arch",
+        "fact": "PostgreSQL database access involves a client and a separate server process, including when both run on the same host.",
+        "source": "https://www.postgresql.org/docs/18/tutorial-arch.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      }
+    ],
+    "hard_constraints": [
+      {
+        "id": "embedded",
+        "description": "Must access local storage without a separate database server process.",
+        "assessments": {
+          "sqlite": {
+            "status": "met",
+            "evidence_ids": [
+              "sqlite_serverless"
+            ]
+          },
+          "json_files": {
+            "status": "unknown",
+            "evidence_ids": []
+          },
+          "postgres": {
+            "status": "violated",
+            "evidence_ids": [
+              "postgres_arch"
+            ]
+          }
+        }
+      }
+    ]
+  },
+  "phases": [
+    {
+      "phase": 1,
+      "expectations": {
+        "decision": "ASK_USER",
+        "rule": "constraint_unverified",
+        "eligible_option_ids": [
+          "sqlite"
+        ],
+        "excluded_option_ids": [
+          "postgres"
+        ],
+        "unknown_assessments": [
+          {
+            "option_id": "json_files",
+            "constraint_id": "embedded"
+          }
+        ],
+        "selected_option": null
+      }
+    },
+    {
+      "phase": 2,
+      "expectations": {
+        "decision": "SELECT_OPTION",
+        "rule": "confidence",
+        "eligible_option_ids": [
+          "sqlite",
+          "json_files"
+        ],
+        "excluded_option_ids": [
+          "postgres"
+        ],
+        "unknown_assessments": [],
+        "selected_option": "sqlite"
+      }
+    }
+  ],
+  "phase2": {
+    "evidence_records": [
+      {
+        "id": "sqlite_serverless",
+        "fact": "SQLite performs database I/O within the application process without a separate server.",
+        "source": "https://www.sqlite.org/serverless.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      },
+      {
+        "id": "json_local",
+        "fact": "The Python json module serializes to a supplied file-like object by calling its write method; this local-file path requires no database server.",
+        "source": "https://github.com/python/cpython/blob/3.14/Lib/json/__init__.py",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      },
+      {
+        "id": "postgres_arch",
+        "fact": "PostgreSQL database access involves a client and a separate server process, including when both run on the same host.",
+        "source": "https://www.postgresql.org/docs/18/tutorial-arch.html",
+        "checked_at": "2026-10-01T08:49:44Z",
+        "kind": "verified"
+      }
+    ],
+    "hard_constraints": [
+      {
+        "id": "embedded",
+        "description": "Must access local storage without a separate database server process.",
+        "assessments": {
+          "sqlite": {
+            "status": "met",
+            "evidence_ids": [
+              "sqlite_serverless"
+            ]
+          },
+          "json_files": {
+            "status": "met",
+            "evidence_ids": [
+              "json_local"
+            ]
+          },
+          "postgres": {
+            "status": "violated",
+            "evidence_ids": [
+              "postgres_arch"
+            ]
+          }
+        }
+      }
+    ],
+    "revision": {
+      "round": 1,
+      "action": "investigation",
+      "summary": "Checked the Python json implementation: local file writes do not use a database server."
+    }
+  }
+}
