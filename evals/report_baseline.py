@@ -31,7 +31,120 @@ def load_jsonl(path):
     return records
 
 
-def compute(cases, fixed_runs, full_runs, environment):
+def _ratio(numerator, denominator):
+    return round(numerator / denominator, 4) if denominator else None
+
+
+def _phase_label(record):
+    if record is None:
+        return "missing"
+    resolution = record["resolution"]
+    return f"{resolution.get('decision')}/{resolution.get('rule')}"
+
+
+def _loop_verdict(case, phase_records):
+    if any(
+        record is None or record["classification"] == "unavailable"
+        for record in phase_records.values()
+    ):
+        return "unavailable"
+    expectations = case["investigation"]
+    res1 = phase_records[1]["resolution"]
+    phase1 = expectations["phase1"]
+    phase1_ok = (
+        res1.get("decision") == "ASK_USER"
+        and res1.get("rule") == phase1["rule"]
+        and res1.get("blocker_class") == phase1["blocker_class"]
+    )
+    res2 = phase_records[2]["resolution"]
+    phase2 = expectations["phase2"]
+    phase2_ok = res2.get("decision") in phase2.get("acceptable_decisions", [])
+    if phase2_ok and res2.get("decision") in (
+        "SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"
+    ):
+        phase2_ok = (
+            res2.get("selected_option")
+            in phase2.get("acceptable_selections", [])
+        )
+    return "pass" if phase1_ok and phase2_ok else "fail"
+
+
+def loop_metrics(cases, runs):
+    """Aggregate two-phase loop runs. Loop pass = phase1 AND phase2 ok."""
+    loop_records = [run for run in runs if run.get("case_kind") == "loop"]
+    per_case = []
+    counts = {"pass": 0, "fail": 0, "unavailable": 0}
+    for case in cases:
+        entries = []
+        run_indexes = sorted({
+            run["run_index"] for run in loop_records
+            if run["case_id"] == case["id"]
+        })
+        for run_index in run_indexes:
+            phase_records = {}
+            for phase in (1, 2):
+                candidates = [
+                    run for run in loop_records
+                    if run["case_id"] == case["id"]
+                    and run["run_index"] == run_index
+                    and run.get("phase") == phase
+                ]
+                phase_records[phase] = candidates[-1] if candidates else None
+            verdict = _loop_verdict(case, phase_records)
+            counts[verdict] += 1
+            entries.append({
+                "run_index": run_index,
+                "phase1": _phase_label(phase_records[1]),
+                "phase2": _phase_label(phase_records[2]),
+                "verdict": verdict,
+            })
+        per_case.append({
+            "case_id": case["id"],
+            "topic": case["topic"],
+            "runs": entries,
+        })
+    return {
+        "overall": {
+            **counts,
+            "loop_pass_rate": _ratio(counts["pass"],
+                                     counts["pass"] + counts["fail"]),
+        },
+        "per_case": per_case,
+    }
+
+
+def comparison_rows(current, previous):
+    """Comparable metric rows (base track) between two baseline documents."""
+    rows = []
+    cur_fixed = current["fixed_state"]["overall"]
+    prev_fixed = (previous.get("fixed_state") or {}).get("overall") or {}
+    for label, key in METRIC_LABELS:
+        rows.append({
+            "metric": label,
+            "baseline": prev_fixed.get(key),
+            "current": cur_fixed.get(key),
+        })
+    cur_pert = current["fixed_state"].get("perturbation_stability") or {}
+    prev_pert = (
+        (previous.get("fixed_state") or {}).get("perturbation_stability") or {}
+    )
+    for perturbation in sorted(set(cur_pert) | set(prev_pert)):
+        rows.append({
+            "metric": f"perturbation pass rate: {perturbation}",
+            "baseline": (prev_pert.get(perturbation) or {}).get("pass_rate"),
+            "current": (cur_pert.get(perturbation) or {}).get("pass_rate"),
+        })
+    for row in rows:
+        if (isinstance(row["baseline"], (int, float))
+                and isinstance(row["current"], (int, float))):
+            row["delta"] = round(row["current"] - row["baseline"], 4)
+        else:
+            row["delta"] = None
+    return rows
+
+
+def compute(cases, fixed_runs, full_runs, environment, loop_cases=None):
+    base_runs = [run for run in fixed_runs if run.get("case_kind") != "loop"]
     per_case = []
     for case in cases:
         entries = [
@@ -41,7 +154,7 @@ def compute(cases, fixed_runs, full_runs, environment):
                 "selected_option": run["resolution"].get("selected_option"),
                 "confidence": run["resolution"].get("confidence"),
             }
-            for run in fixed_runs if run["case_id"] == case["id"]
+            for run in base_runs if run["case_id"] == case["id"]
         ]
         per_case.append({
             "case_id": case["id"],
@@ -58,14 +171,14 @@ def compute(cases, fixed_runs, full_runs, environment):
             return None
         return round(sum(1 for s in judged if s["verdict"].get(key)) / len(judged), 4)
 
-    return {
+    result = {
         "generated_at": runner_common.utc_now(),
         "environment": environment,
         "fixed_state": {
-            "overall": judging.fixed_state_metrics(cases, fixed_runs),
-            "by_run_index": judging.aggregate_by_run_index(cases, fixed_runs),
+            "overall": judging.fixed_state_metrics(cases, base_runs),
+            "by_run_index": judging.aggregate_by_run_index(cases, base_runs),
             "perturbation_stability": judging.perturbation_stability(
-                cases, fixed_runs, auto_select
+                cases, base_runs, auto_select
             ),
             "per_case": per_case,
         },
@@ -77,6 +190,9 @@ def compute(cases, fixed_runs, full_runs, environment):
             },
         },
     }
+    if loop_cases:
+        result["loop_cases"] = loop_metrics(loop_cases, fixed_runs)
+    return result
 
 
 def _fmt(value):
@@ -155,6 +271,25 @@ def render_summary(baseline, notes=""):
                 f"| {case['case_id']} | {run['run_index']} | {run['classification']} | "
                 f"{run['selected_option']} | {run['confidence']} |"
             )
+    if "loop_cases" in baseline:
+        loop = baseline["loop_cases"]
+        overall = loop["overall"]
+        lines += [
+            "",
+            "## loop ケース(2段階)",
+            "",
+            f"pass {overall['pass']} / fail {overall['fail']}"
+            f"(unavailable {overall['unavailable']} は分母から除外)。",
+            "",
+            "| case | run | phase1 | phase2 | 判定 |",
+            "|---|---|---|---|---|",
+        ]
+        for case in loop["per_case"]:
+            for run in case["runs"]:
+                lines.append(
+                    f"| {case['case_id']} | {run['run_index']} | "
+                    f"{run['phase1']} | {run['phase2']} | {run['verdict']} |"
+                )
     lines += [
         "",
         "## full-flow トラック",
@@ -180,6 +315,21 @@ def render_summary(baseline, notes=""):
         f"coverage率 {_fmt(rates['coverage'])} / forbidden回避率 "
         f"{_fmt(rates['forbidden_avoided'])} / 判定妥当率 {_fmt(rates['decision_ok'])} / "
         f"state妥当率 {_fmt(rates['state_valid'])}",
+    ]
+    if "comparison" in baseline:
+        lines += [
+            "",
+            "## baseline との比較",
+            "",
+            "| 指標 | baseline | 今回 | 差分 |",
+            "|---|---|---|---|",
+        ]
+        for row in baseline["comparison"]:
+            lines.append(
+                f"| {row['metric']} | {_fmt(row['baseline'])} | "
+                f"{_fmt(row['current'])} | {_fmt(row['delta'])} |"
+            )
+    lines += [
         "",
         "## 留保",
         "",
@@ -204,6 +354,9 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--baseline-dir", required=True)
     parser.add_argument("--cases-dir", default=str(EVALS_DIR / "cases"))
+    parser.add_argument("--loop-cases-dir", default=None)
+    parser.add_argument("--compare-to", default=None,
+                        help="path to a previous baseline.json for comparison")
     args = parser.parse_args(argv)
     baseline_dir = Path(args.baseline_dir)
     try:
@@ -211,6 +364,13 @@ def main(argv=None) -> int:
     except case_schema.CaseError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    loop_cases = None
+    if args.loop_cases_dir:
+        try:
+            loop_cases = case_schema.load_loop_cases(args.loop_cases_dir)
+        except case_schema.CaseError as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
     fixed_runs = load_jsonl(baseline_dir / "fixed_state_runs.jsonl")
     for run in fixed_runs:
         run.setdefault("classification", judging.classify_run(run["resolution"]))
@@ -220,7 +380,21 @@ def main(argv=None) -> int:
     )
     notes_path = baseline_dir / "notes.md"
     notes = notes_path.read_text(encoding="utf-8") if notes_path.exists() else ""
-    baseline = compute(cases, fixed_runs, full_runs, environment)
+    baseline = compute(cases, fixed_runs, full_runs, environment,
+                       loop_cases=loop_cases)
+    if args.compare_to:
+        try:
+            previous = json.loads(
+                Path(args.compare_to).read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as error:
+            print(
+                f"error: cannot read comparison baseline "
+                f"({type(error).__name__})",
+                file=sys.stderr,
+            )
+            return 2
+        baseline["comparison"] = comparison_rows(baseline, previous)
     (baseline_dir / "baseline.json").write_text(
         json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8"
     )
