@@ -151,7 +151,7 @@ def _alternative_text(alternative):
 def match_group(alternatives, group):
     """True when any alternative's name+description contains any keyword of the group."""
     return any(
-        word in _alternative_text(alternative)
+        word.lower() in _alternative_text(alternative)
         for alternative in alternatives
         for word in group
     )

@@ -115,6 +115,20 @@ def test_report_end_to_end(tmp_path, capsys):
     assert "撹乱安定性" in summary
 
 
+def test_report_preserves_handwritten_notes(tmp_path):
+    cases_dir, baseline_dir = prepare(tmp_path)
+    (baseline_dir / "notes.md").write_text(
+        "- 手書きメモ: full-flow は初回失敗後に再実行した。\n", encoding="utf-8"
+    )
+    exit_code = report_baseline.main([
+        "--baseline-dir", str(baseline_dir), "--cases-dir", str(cases_dir),
+    ])
+    assert exit_code == 0
+    summary = (baseline_dir / "SUMMARY.md").read_text(encoding="utf-8")
+    assert "手書きメモ: full-flow は初回失敗後に再実行した。" in summary
+    assert "## 留保" in summary
+
+
 def test_render_summary_marks_na_for_missing_rates():
     baseline = report_baseline.compute(
         [CASE_CLEAR, CASE_ASK], [], [],

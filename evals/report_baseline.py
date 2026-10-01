@@ -83,7 +83,9 @@ def _fmt(value):
     return "N/A" if value is None else f"{value:.2%}" if isinstance(value, float) else str(value)
 
 
-def render_summary(baseline):
+def render_summary(baseline, notes=""):
+    """Render SUMMARY.md; `notes` (from the baseline dir's notes.md) is appended
+    to the caveats section so hand-written provenance survives regeneration."""
     environment = baseline["environment"]
     fixed = baseline["fixed_state"]
     full = baseline["full_flow"]
@@ -185,8 +187,13 @@ def render_summary(baseline):
         "auto_select)は暫定。本 baseline の confidence 分布を見て見直す。",
         "- unavailable / invalid の実行は指標の分母から除外している。",
         "- decide.py の個別実行ログは `~/.autarch/decisions.jsonl` にも記録される。",
-        "",
     ]
+    if notes.strip():
+        notes_body = notes.strip()
+        if not notes_body.endswith("\n"):
+            notes_body += "\n"
+        lines.append(notes_body.rstrip())
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -211,11 +218,15 @@ def main(argv=None) -> int:
     environment = json.loads(
         (baseline_dir / "environment.json").read_text(encoding="utf-8")
     )
+    notes_path = baseline_dir / "notes.md"
+    notes = notes_path.read_text(encoding="utf-8") if notes_path.exists() else ""
     baseline = compute(cases, fixed_runs, full_runs, environment)
     (baseline_dir / "baseline.json").write_text(
         json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (baseline_dir / "SUMMARY.md").write_text(render_summary(baseline), encoding="utf-8")
+    (baseline_dir / "SUMMARY.md").write_text(
+        render_summary(baseline, notes), encoding="utf-8"
+    )
     print(str(baseline_dir / "baseline.json"))
     return 0
 

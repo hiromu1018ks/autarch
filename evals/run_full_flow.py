@@ -93,6 +93,11 @@ def run_scenario(scenario_dir: Path, args, out_dir: Path) -> dict:
         ]
         record["status"] = "failed"
         record["reason"] = "missing artifacts: " + ", ".join(missing)
+    elif resolution.get("decision") == "PROVIDER_UNAVAILABLE":
+        record["status"] = "unavailable"
+        record["reason"] = "provider unavailable: " + str(
+            resolution.get("detail") or resolution.get("rule")
+        )
     else:
         record["verdict"] = judging.judge_full_flow(
             state, decide.validate_state(state), resolution, expectations

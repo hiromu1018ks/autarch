@@ -213,6 +213,14 @@ def test_match_group_is_case_insensitive_substring():
     assert not judging.match_group(alternatives, ["sqlite"])
 
 
+def test_match_group_lowercases_the_keyword_side_too():
+    alternatives = [
+        {"id": "pg", "name": "PostgreSQL", "description": "A client-server database."}
+    ]
+    assert judging.match_group(alternatives, ["PostgreSQL"])
+    assert judging.match_group(alternatives, ["POSTGRES"])
+
+
 def test_judge_full_flow_composite():
     state = {
         "alternatives": [

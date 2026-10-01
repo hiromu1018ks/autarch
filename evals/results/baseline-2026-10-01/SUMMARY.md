@@ -120,6 +120,6 @@ coverage率 80.00% / forbidden回避率 100.00% / 判定妥当率 20.00% / state
 ## 留保
 
 - `evidence_removed` の合格基準(ASK_USER、または正解圏内かつ confidence < auto_select)は暫定。本 baseline の confidence 分布を見て見直す。
-- full-flow トラックは初回実行で claude CLI の引数問題(--allowedTools が prompt を取り込む)により全シナリオ失敗。stdin 渡しに修正のうえ 2026-10-01 に 5シナリオを再実行した(成功率は再実行分による)。
 - unavailable / invalid の実行は指標の分母から除外している。
 - decide.py の個別実行ログは `~/.autarch/decisions.jsonl` にも記録される。
+- full-flow トラックは初回実行で claude CLI の引数問題(--allowedTools が prompt を取り込む)により全シナリオ失敗。stdin 渡しに修正のうえ 2026-10-01 に 5シナリオを再実行した(成功率は再実行分による)。

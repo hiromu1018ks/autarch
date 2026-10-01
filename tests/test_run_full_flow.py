@@ -190,6 +190,33 @@ def test_prompt_is_passed_via_stdin(tmp_path, stub_claude, canned_dir, monkeypat
     assert "Decide storage." in (capture / "stub_stdin.txt").read_text()
 
 
+def test_provider_unavailable_scenario_is_not_judged(
+        tmp_path, stub_claude, monkeypatch):
+    canned = tmp_path / "canned"
+    canned.mkdir()
+    (canned / "autarch-state.json").write_text(
+        json.dumps(CANNED_STATE), encoding="utf-8"
+    )
+    (canned / "autarch-resolution.json").write_text(
+        json.dumps({"decision": "PROVIDER_UNAVAILABLE", "rule": "provider_error",
+                    "detail": "HTTP 503"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STUB_CANNED_DIR", str(canned))
+    scenarios = tmp_path / "scenarios"
+    make_scenario(scenarios, "database")
+    out_dir = tmp_path / "out"
+    exit_code = run_full_flow.main([
+        "--scenarios-dir", str(scenarios), "--out-dir", str(out_dir),
+        "--agent-model", "stub-model", "--claude-bin", stub_claude,
+    ])
+    assert exit_code == 0
+    record = json.loads((out_dir / "full_flow_runs.jsonl").read_text().strip())
+    assert record["status"] == "unavailable"
+    assert record["verdict"] is None
+    assert "HTTP 503" in record["reason"]
+
+
 def test_dry_run_lists_scenarios(tmp_path, stub_claude, capsys):
     scenarios = tmp_path / "scenarios"
     make_scenario(scenarios, "database")
