@@ -1,0 +1,65 @@
+{
+  "id": "deploy_loop_resolvable",
+  "topic": "deployment",
+  "situation": "loop_resolvable",
+  "state": {
+    "goal": "Choose hosting for the documentation site",
+    "question": "Where should the documentation site be hosted?",
+    "known_constraints": ["must stay within free hosting tiers"],
+    "environment": {},
+    "evidence": ["the content is written as markdown sources"],
+    "alternatives": [
+      {
+        "id": "static_host",
+        "name": "Static site host",
+        "description": "Serve the generated files from a hosting product built for static sites.",
+        "advantages": ["free tier fits", "no servers to run"],
+        "disadvantages": ["static content only"],
+        "assumptions": []
+      },
+      {
+        "id": "vps_self_host",
+        "name": "Self-hosted VPS",
+        "description": "Run a small virtual server and serve the files from it.",
+        "advantages": ["full control of the environment"],
+        "disadvantages": ["server upkeep for static files", "paid server"],
+        "assumptions": []
+      },
+      {
+        "id": "paas_container",
+        "name": "Container platform",
+        "description": "Package and deploy the site as a container to a managed platform.",
+        "advantages": ["familiar deploy pipeline"],
+        "disadvantages": ["runtime not needed for static files", "usually beyond free tiers"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "running_cost",
+        "name": "Running cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "investigation": {
+    "injected_evidence": [
+      "the site generator outputs static HTML",
+      "no dynamic endpoints exist"
+    ],
+    "phase1": {"rule": "evidence_insufficient", "blocker_class": "facts_missing"},
+    "phase2": {
+      "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+      "acceptable_selections": ["static_host"],
+      "forbidden_selections": []
+    }
+  },
+  "derived_from": null
+}
