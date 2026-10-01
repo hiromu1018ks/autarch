@@ -1,0 +1,55 @@
+{
+  "id": "db_preference_needed",
+  "topic": "database",
+  "situation": "preference_needed",
+  "state": {
+    "goal": "Choose a storage engine for the notes product as it grows",
+    "question": "Which storage approach should the notes product standardize on?",
+    "known_constraints": ["data must survive process restarts"],
+    "environment": {"language": "python"},
+    "evidence": [
+      "current usage is one local user",
+      "a public multi-user version is under consideration but not decided",
+      "either storage approach can serve the current usage"
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "SQLite",
+        "description": "An embedded relational database stored in a single file, simplest for the current single-user usage.",
+        "advantages": ["no server required", "single-file backups"],
+        "disadvantages": ["multi-user scaling would need rework"],
+        "assumptions": []
+      },
+      {
+        "id": "postgres",
+        "name": "PostgreSQL",
+        "description": "A client-server relational database ready for many concurrent users from the start.",
+        "advantages": ["concurrent access", "scales with future users"],
+        "disadvantages": ["requires running and operating a server today"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "operational_burden",
+        "name": "Operational burden",
+        "weight": 0.4,
+        "rubric": ["High burden", "Moderate burden", "Low burden"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": true
+  },
+  "derived_from": null
+}

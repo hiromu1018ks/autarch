@@ -1,0 +1,66 @@
+{
+  "id": "db_constraint_clear",
+  "topic": "database",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose a storage engine for a single-user offline note-taking CLI",
+    "question": "Which storage approach best fits a local single-user offline CLI tool?",
+    "known_constraints": [
+      "must work fully offline",
+      "single local user with one process at a time"
+    ],
+    "environment": {"os": "linux", "language": "python", "form": "desktop CLI"},
+    "evidence": [
+      "the README states the tool runs locally without network access",
+      "data volume is a few thousand notes",
+      "there are no concurrent writers"
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "SQLite",
+        "description": "An embedded relational database stored in a single file.",
+        "advantages": ["no server or network required", "transactional safety in one file"],
+        "disadvantages": ["no built-in multi-host access"],
+        "assumptions": []
+      },
+      {
+        "id": "postgres",
+        "name": "PostgreSQL",
+        "description": "A client-server relational database requiring a running server process.",
+        "advantages": ["concurrent multi-client access", "rich administration tooling"],
+        "disadvantages": ["requires a server process", "conflicts with the offline requirement"],
+        "assumptions": []
+      },
+      {
+        "id": "json_files",
+        "name": "JSON files",
+        "description": "Each note stored as one JSON file in a directory.",
+        "advantages": ["no engine dependency", "trivially inspectable"],
+        "disadvantages": ["manual consistency handling", "weaker querying"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "operational_burden",
+        "name": "Operational burden",
+        "weight": 0.4,
+        "rubric": ["High burden", "Moderate burden", "Low burden"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+    "acceptable_selections": ["sqlite"],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

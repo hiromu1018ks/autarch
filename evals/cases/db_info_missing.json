@@ -1,0 +1,62 @@
+{
+  "id": "db_info_missing",
+  "topic": "database",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose a storage engine for the notes product",
+    "question": "Which storage approach best fits the notes product?",
+    "known_constraints": ["data must survive process restarts"],
+    "environment": {"language": "python"},
+    "evidence": [
+      "records are short structured notes",
+      "the team is comfortable with SQL"
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "SQLite",
+        "description": "An embedded relational database stored in a single file, suited to local and single-host use.",
+        "advantages": ["no server required", "single-file backups"],
+        "disadvantages": ["limited concurrent write scaling"],
+        "assumptions": []
+      },
+      {
+        "id": "postgres",
+        "name": "PostgreSQL",
+        "description": "A client-server relational database that serves many concurrent clients.",
+        "advantages": ["concurrent access", "mature operations tooling"],
+        "disadvantages": ["requires running and operating a server"],
+        "assumptions": []
+      },
+      {
+        "id": "json_files",
+        "name": "JSON files",
+        "description": "Each note stored as one JSON file in a directory.",
+        "advantages": ["no engine dependency", "trivially inspectable"],
+        "disadvantages": ["manual consistency handling", "weaker querying"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "operational_burden",
+        "name": "Operational burden",
+        "weight": 0.4,
+        "rubric": ["High burden", "Moderate burden", "Low burden"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}
