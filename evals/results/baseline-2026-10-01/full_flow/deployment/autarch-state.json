@@ -1,0 +1,120 @@
+{
+  "goal": "Ship and operate the status-page web service reliably with the staffing the team actually has (one person who can handle server upkeep, no on-call rotation), by choosing where to run it.",
+  "question": "Select the deployment target for the status-page containerized web service: a managed platform that runs the container for the team, or a small self-managed virtual server that the team operates itself.",
+  "known_constraints": [
+    "Budget supports either option: the README states the team can afford a managed platform or a small virtual server.",
+    "Operations staffing is one person who can handle server upkeep, and there is no on-call rotation.",
+    "The team has no strong preference between the two options yet.",
+    "The service is already containerized (Dockerfile based on python:3.12-slim) and listens on 0.0.0.0:8080."
+  ],
+  "environment": {
+    "repo": "status-page",
+    "runtime": "Python 3.12, standard library only",
+    "container": "Docker image from python:3.12-slim, copies app.py, exposes port 8080",
+    "statefulness": "Stateless; no database, no external dependencies, no persistent storage",
+    "service_behavior": "Single HTTP handler returns 200 'status: ok' for every GET",
+    "team_context": "One person available for upkeep, no on-call rotation, no stated platform preference",
+    "existing_deployment_automation": "None found in the repository (no CI pipeline, no infrastructure-as-code, no TLS or ingress configuration)"
+  },
+  "evidence": [
+    "app.py implements the whole service with Python's standard-library http.server (app.py:1-14): no third-party dependencies, no database, no persistent state, and it responds 200 'status: ok' to any GET on 0.0.0.0:8080.",
+    "app.py uses single-threaded HTTPServer rather than ThreadingHTTPServer (app.py:14), which is a development-grade server, so either target still relies on some outer layer (platform runtime or team-configured process manager) for restarts and robustness.",
+    "The Dockerfile builds from python:3.12-slim, copies app.py, and runs it as the image default user (Dockerfile:1-3); it defines no HEALTHCHECK and no non-root USER, so neither target inherits production hardening from the image itself.",
+    "README.md states verbatim: 'The team can afford either a managed platform or a small virtual server. One person can handle server upkeep, but there is no on-call rotation and no strong preference yet.' (English gloss: budget permits both options; a single person can maintain a server but nobody covers failures around the clock, and the team has no existing preference.)",
+    "The repository contains no CI pipeline, no infrastructure-as-code, no TLS or ingress configuration, and no deployment manifests, so deployment setup would be created from scratch under either option."
+  ],
+  "alternatives": [
+    {
+      "id": "managed_platform",
+      "name": "Managed platform",
+      "description": "Deploy the existing container image to a managed container platform that runs it, restarts it, terminates TLS, and patches the underlying host.",
+      "advantages": [
+        "The provider handles host patching, process restarts, and TLS termination, so no team time is spent on them.",
+        "Infrastructure failures are covered by the provider's staff, which compensates for the absence of an on-call rotation.",
+        "The existing container deploys as-is without the team building server provisioning, reverse proxy, or boot-time restart setup."
+      ],
+      "disadvantages": [
+        "Recurring platform charges continue whether or not the service is being used.",
+        "Runtime behavior such as restart policy, logging, and metrics is expressed through the provider's abstractions.",
+        "Some provider-specific configuration would have to be rebuilt if the service moves elsewhere later."
+      ],
+      "assumptions": [
+        "A managed container platform is available that accepts a python:3.12-slim image listening on port 8080.",
+        "The provider's achieved availability is at least as good as what one unassisted operator can sustain."
+      ]
+    },
+    {
+      "id": "self_managed_server",
+      "name": "Self-managed server",
+      "description": "Run the existing container image on a small virtual server that the team operates, with the team owning OS updates, TLS, and restart procedures.",
+      "advantages": [
+        "Server cost is flat and predictable and the same machine can host other work later.",
+        "The team keeps full control over runtime configuration, networking, and the container environment.",
+        "Operational knowledge stays in-house instead of inside a provider's platform."
+      ],
+      "disadvantages": [
+        "One person must perform OS patching, certificate renewal, and recovery with no on-call backup.",
+        "Server or container failures are noticed and fixed only when that single operator is available.",
+        "TLS, reverse proxy, and restart-on-reboot setup must be built and maintained by the team, since the repo contains none of it."
+      ],
+      "assumptions": [
+        "A small virtual server can run the python:3.12-slim container and keep port 8080 reachable behind a proxy.",
+        "The single operator has the time and access to perform upkeep when it is needed."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "operational_burden",
+      "name": "Ongoing operational burden",
+      "weight": 0.3,
+      "rubric": [
+        "Requires continuous after-hours coverage that the team does not have",
+        "Requires scheduled upkeep by one person, including patching, certificate renewal, and recovery",
+        "Requires only occasional review; restarts, patching, and TLS are covered by the platform or tooling",
+        "Requires essentially no ongoing upkeep beyond deploying changes"
+      ]
+    },
+    {
+      "id": "status_page_availability",
+      "name": "Availability of the status page itself",
+      "weight": 0.25,
+      "rubric": [
+        "Single host with a single operator; outages persist until that person is available",
+        "Recovery depends on one person's response time, so brief unattended outages are likely",
+        "Managed restarts and host redundancy; outages are brief without team action",
+        "Independently hosted with managed multi-zone redundancy and health checks"
+      ]
+    },
+    {
+      "id": "portability_lock_in",
+      "name": "Portability and lock-in",
+      "weight": 0.2,
+      "rubric": [
+        "Runtime depends on provider-specific services that would need rework to leave",
+        "Runtime is portable but provider configuration such as DNS, TLS, and deploy settings would be rebuilt",
+        "Runtime is fully self-contained in the repository and runs unchanged anywhere Docker runs"
+      ]
+    },
+    {
+      "id": "setup_and_change_effort",
+      "name": "Setup and change effort",
+      "weight": 0.15,
+      "rubric": [
+        "Deployment must be designed and built from scratch, including TLS, proxy, and restart-on-reboot",
+        "Deployment is mostly configuration on top of an existing container workflow",
+        "Deploying a change is a single push of the existing image"
+      ]
+    },
+    {
+      "id": "cost_fit",
+      "name": "Cost fit with the stated budget",
+      "weight": 0.1,
+      "rubric": [
+        "Cost exceeds what the team stated it can afford",
+        "Cost is affordable but noticeably higher than the alternative",
+        "Cost is comparable to the affordable alternative"
+      ]
+    }
+  ]
+}

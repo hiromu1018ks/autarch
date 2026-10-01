@@ -1,0 +1,136 @@
+{
+  "goal": "Keep csv-report reliable and maintainable for the analyst who runs it as a single script, while deciding how its CSV processing should be implemented.",
+  "question": "Should csv-report keep its standard-library-only CSV processing, or add an external data-handling dependency?",
+  "known_constraints": [
+    "The tool must keep running as a single script on the analyst's laptop.",
+    "Weekly file sizes are unmeasured and vary a lot between weeks.",
+    "The repository currently has no dependency manifest, test suite, or CI.",
+    "The currently required output is a row count for the weekly export."
+  ],
+  "environment": {
+    "language": "Python 3, standard library only",
+    "deployment": "Single script run manually on an analyst's laptop",
+    "files": ["README.md", "process.py"],
+    "dependency_manifest": "none (no requirements.txt, pyproject.toml, setup.py, or lockfile)",
+    "tests": "none",
+    "ci": "none",
+    "version_control": "not a git repository",
+    "current_dependencies": ["csv (Python standard library)"]
+  },
+  "evidence": [
+    "process.py is 12 lines: it opens 'export.csv', wraps it in csv.reader, and prints 'rows: N' where N comes from sum(1 for _ in rows).",
+    "process.py's docstring states: 'Turn the weekly CSV export into a summary report (stdlib only today).' — the stdlib-only state is explicit and recent.",
+    "README.md states: 'An internal tool that turns the weekly CSV export into a summary report. It runs as a single script on the analyst's laptop. Nobody has measured how large the weekly files get; sizes vary a lot between weeks.'",
+    "The repository contains exactly README.md and process.py — no requirements.txt, pyproject.toml, setup.py, lockfile, tests, or CI configuration — and it is not a git repository.",
+    "csv.reader is a lazy iterator; the current summarizer consumes it with a generator expression, so the existing row count already uses memory proportional to one row rather than to file size.",
+    "No sample export.csv exists in the repository, so actual weekly file sizes cannot be measured from the repo itself.",
+    "Python's csv module ships with the interpreter, is documented, and is backed by the C-accelerated _csv implementation; no third-party package is required for RFC 4180-style CSV parsing."
+  ],
+  "alternatives": [
+    {
+      "id": "keep_stdlib_csv",
+      "name": "Keep standard-library CSV processing",
+      "description": "Continue using only Python's built-in csv module to read and summarize the weekly export, with no new third-party dependencies.",
+      "advantages": [
+        "No install, pinning, or environment-management burden on the analyst's laptop",
+        "The existing 12-line implementation already satisfies the current requirement (row counting) and streams rows lazily",
+        "csv module behavior for quoting, embedded newlines, and dialects is documented in the standard library"
+      ],
+      "disadvantages": [
+        "Any future aggregation beyond counting (grouping, joins, statistics) must be hand-written",
+        "Performance on very large files is unverified because weekly file sizes have never been measured"
+      ],
+      "assumptions": [
+        "The tool's job stays close to summarizing a single weekly CSV export",
+        "Standard-library csv performance is adequate for the actual file sizes once they are measured"
+      ]
+    },
+    {
+      "id": "add_data_handling_dependency",
+      "name": "Add a data-handling dependency",
+      "description": "Add a third-party data-handling library such as pandas or polars and move CSV loading and summarization onto it.",
+      "advantages": [
+        "Richer aggregation, filtering, and grouping are available without custom code",
+        "Columnar or vectorized implementations can be fast on very large files",
+        "Common CSV parsing edge cases are handled and tested by a widely used library"
+      ],
+      "disadvantages": [
+        "Introduces install and version-pinning burden into a single-script laptop tool that currently has no dependency manifest, tests, or CI",
+        "Larger download and environment footprint for a job that is currently one row count",
+        "Rewrites working 12-line code and adds a library API and upgrade path to maintain"
+      ],
+      "assumptions": [
+        "The analyst can install and upgrade third-party packages on the laptop where the tool runs",
+        "Future analysis needs will justify the dependency weight"
+      ]
+    },
+    {
+      "id": "stdlib_with_revisit_trigger",
+      "name": "Keep stdlib now, define a measurable trigger to revisit",
+      "description": "Keep the standard-library-only implementation and record an explicit measurable trigger — such as a measured weekly file size, a new aggregation requirement, or observed slowness — at which the dependency decision is reopened.",
+      "advantages": [
+        "Avoids dependency weight today while the requirement is a single row count",
+        "Replaces the unmeasured-size unknown with a concrete decision rule, which directly addresses the README's admission that file sizes were never measured",
+        "Requires no code changes now, so existing behavior is untouched"
+      ],
+      "disadvantages": [
+        "Defers rather than resolves future capability needs; a trigger must be written down and someone must act on it",
+        "If file sizes grow abruptly, the tool gains nothing from optimized libraries until the trigger is noticed"
+      ],
+      "assumptions": [
+        "A trigger can be written down and observed in normal use of the tool",
+        "Row counting with the standard library remains adequate until a trigger fires"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "current_requirement_fit",
+      "name": "Fit to the current requirement",
+      "weight": 0.25,
+      "rubric": [
+        "Fails to produce the required weekly row count",
+        "Produces the row count but with rework or risk to existing behavior",
+        "Produces the row count with documented CSV edge-case handling and no rework of working code"
+      ]
+    },
+    {
+      "id": "operational_footprint",
+      "name": "Operational footprint on the analyst's laptop",
+      "weight": 0.2,
+      "rubric": [
+        "Adds a large dependency tree that must be installed and pinned on a machine with no manifest, tests, or CI",
+        "Adds a small, contained third-party dependency",
+        "Adds no new installation or pinning burden"
+      ]
+    },
+    {
+      "id": "unknown_file_size_resilience",
+      "name": "Resilience to unmeasured, highly variable file sizes",
+      "weight": 0.2,
+      "rubric": [
+        "Loads whole files into memory or is untested at large sizes with no plan to find out",
+        "Streams or scales to large files but leaves the size unknown and unmanaged",
+        "Streams or scales to large files and turns the unknown size into something measured or explicitly watched"
+      ]
+    },
+    {
+      "id": "future_analysis_capability",
+      "name": "Capability if analysis needs grow",
+      "weight": 0.15,
+      "rubric": [
+        "New aggregations require hand-writing custom logic",
+        "Common aggregations, grouping, and filtering are available out of the box"
+      ]
+    },
+    {
+      "id": "maintainability",
+      "name": "Maintainability and reviewability",
+      "weight": 0.2,
+      "rubric": [
+        "Adds moving parts (dependency versions, upgrades) to an unmanaged single script",
+        "Keeps the change surface small and reviewable with documented standard-library behavior"
+      ]
+    }
+  ]
+}

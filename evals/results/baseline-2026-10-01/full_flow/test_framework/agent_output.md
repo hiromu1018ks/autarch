@@ -1,0 +1,5 @@
+**選択されたオプション: `keep-pytest`(pytest を標準として継続使用)** — 理由: 「Choice と Score が confidence 1.00 で 'keep-pytest' に一致」。Jev の confidence は **1.0** です。
+
+---
+
+Autarch による決定解決の結果、pricing-service のテストフレームワークは **pytest を標準として継続(keep-pytest)** に決定されました。リポジトリの証拠(pyproject.toml の dev 依存 `pytest>=8`、`@pytest.mark.parametrize` を使った唯一のテストモジュール `tests/test_pricing.py`、CI の `pip install -e .[dev]; pytest`、README の「suite and onboarding docs assume pytest」、pytest 9.1.1 のローカル実行痕跡、unittest/nose/mock の使用ゼロ)に基づき、3 つの代替案(pytest 継続 / stdlib unittest への移行 / pytest+プラグイン導入)を 4 つの評価基準(既存スイート互換性 0.30・CI/ドキュメント整合性 0.25・依存とメンテナンス負荷 0.25・将来の拡張性 0.20)で評価したところ、keep-pytest が複合スコア 0.873 で unittest 移行(0.3063)と pytest+プラグイン(0.6475)を明確に上回り、Jev は confidence 1.0・確率分布 keep-pytest 100% で `SELECT_OPTION`(rule: confidence)を返しました。決定の実質的な根拠は、既存テストと CI・README を無変更のまま維持でき、プラグインエコシステムという拡張性も確保される一方、標準ライブラリ unittest が唯一優位な「外部依存ゼロ」の利点は、テスト書き換えと CI/ドキュメント更新のコストを上回らなかった点にあります。なお決定状態は `./autarch-state.json`、解決結果は `./autarch-resolution.json` に保存済みです。

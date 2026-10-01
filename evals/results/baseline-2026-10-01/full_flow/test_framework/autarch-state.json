@@ -1,0 +1,122 @@
+{
+  "goal": "Keep pricing-service's test setup healthy and consistent as the project moves forward.",
+  "question": "Which test framework should pricing-service standardize on going forward, given that the existing suite, CI workflow, and onboarding docs are already built around pytest?",
+  "known_constraints": [
+    "requires-python is >=3.10",
+    "The project has zero runtime dependencies; test tooling is isolated in the [dev] extra",
+    "CI currently runs the suite with the single command 'pytest' after 'pip install -e .[dev]'"
+  ],
+  "environment": {
+    "language": "Python (requires-python >=3.10)",
+    "build_backend": "setuptools>=68",
+    "runtime_dependencies": [],
+    "dev_dependencies": ["pytest>=8"],
+    "ci": "GitHub Actions (ubuntu-latest): pip install -e .[dev]; pytest",
+    "test_files": ["tests/test_pricing.py"],
+    "framework_specific_config_files": [],
+    "size": "One production function (pricing.tier_price) and one test module with two parametrized cases"
+  },
+  "evidence": [
+    "pyproject.toml declares dev optional-dependencies as ['pytest>=8'] and dependencies = [] (no runtime dependencies).",
+    "tests/test_pricing.py imports pytest and uses @pytest.mark.parametrize; it is the only test module in the repository, testing the single function pricing.tier_price.",
+    ".github/workflows/ci.yml installs with 'pip install -e .[dev]' and runs 'pytest' on every push.",
+    "README.md states: 'All tests run under pytest in CI; the suite and onboarding docs assume pytest.'",
+    "No conftest.py, pytest.ini, tox.ini, setup.cfg, or Makefile exists; there is no framework-specific configuration beyond pyproject.toml.",
+    "tests/__pycache__ contains test_pricing.cpython-314-pytest-9.1.1.pyc, showing pytest 9.1.1 executed the suite locally under CPython 3.14.",
+    "A repository-wide search found no unittest, nose, or mock usage in any source or test file."
+  ],
+  "alternatives": [
+    {
+      "id": "keep-pytest",
+      "name": "Standardize on pytest (status quo)",
+      "description": "Keep pytest>=8 as the sole test framework already used by the test suite, CI workflow, and onboarding docs.",
+      "advantages": [
+        "The existing test module runs unchanged; parametrize and plain asserts are already pytest-style",
+        "The CI workflow (pip install -e .[dev]; pytest) needs no changes",
+        "README documents pytest as the assumed framework, so onboarding docs stay accurate"
+      ],
+      "disadvantages": [
+        "Keeps an external dev dependency in an otherwise zero-dependency project",
+        "The team must track pytest major-version changes; the repo already runs pytest 9.1.1 while pyproject requires >=8"
+      ],
+      "assumptions": [
+        "The service remains a small Python package with a lightweight test suite"
+      ]
+    },
+    {
+      "id": "stdlib-unittest",
+      "name": "Migrate to Python stdlib unittest",
+      "description": "Rewrite the test suite on Python's built-in unittest module and remove the pytest dev dependency.",
+      "advantages": [
+        "Zero external test dependency; stdlib-supported on every Python version the project targets",
+        "No framework version pinning or upgrade churn to maintain"
+      ],
+      "disadvantages": [
+        "The existing parametrized pytest test must be rewritten as unittest cases (e.g. subTest loops)",
+        "The CI workflow and the README/onboarding assumption documented around pytest would need updating"
+      ],
+      "assumptions": [
+        "The team accepts unittest assert-method style (self.assertEqual) instead of plain assert statements"
+      ]
+    },
+    {
+      "id": "pytest-with-plugins",
+      "name": "Keep pytest and add plugin tooling",
+      "description": "Retain pytest and additionally adopt plugins such as pytest-cov and pytest-xdist as the service grows.",
+      "advantages": [
+        "Keeps the existing suite and CI unchanged while adding coverage and parallel-run capability",
+        "Access to pytest's plugin ecosystem as the codebase and test count grow"
+      ],
+      "disadvantages": [
+        "Grows the dev dependency set beyond the single pytest>=8 entry",
+        "Adds CI configuration and maintenance for tooling the current one-function suite does not yet use"
+      ],
+      "assumptions": [
+        "Test suite size and coverage requirements will grow enough to justify the extra tooling"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "existing_suite_compatibility",
+      "name": "Compatibility with the existing test suite",
+      "weight": 0.3,
+      "rubric": [
+        "Requires a full rewrite of all tests",
+        "Requires a partial rewrite of existing tests",
+        "Runs existing tests with minor changes",
+        "Runs existing tests unchanged, including parametrize"
+      ]
+    },
+    {
+      "id": "ci_and_doc_alignment",
+      "name": "Alignment with CI workflow and documented assumptions",
+      "weight": 0.25,
+      "rubric": [
+        "Requires rewriting the CI workflow and the onboarding docs",
+        "Requires minor CI or documentation updates",
+        "Matches the current CI workflow and documented assumptions exactly"
+      ]
+    },
+    {
+      "id": "dependency_and_maintenance_footprint",
+      "name": "Dependency and maintenance footprint",
+      "weight": 0.25,
+      "rubric": [
+        "Adds several new dependencies and ongoing configuration maintenance",
+        "Adds one external dev dependency with occasional version maintenance",
+        "Adds no external dependencies and no version-upgrade maintenance"
+      ]
+    },
+    {
+      "id": "future_scalability",
+      "name": "Scalability and ecosystem as the service grows",
+      "weight": 0.2,
+      "rubric": [
+        "Minimal extension story; tooling must be hand-rolled",
+        "Moderate extension via stdlib and community tools",
+        "Rich ecosystem of fixtures, plugins, and parallel runners"
+      ]
+    }
+  ]
+}

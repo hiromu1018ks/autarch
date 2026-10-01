@@ -1,0 +1,148 @@
+{
+  "goal": "Choose an authentication state strategy for admin-panel so the internal team can sign in securely while matching the app's current single-origin, server-rendered design.",
+  "question": "Which authentication state strategy should admin-panel use for managing sign-in state?",
+  "known_constraints": [
+    "Five-person internal team; small, known user base",
+    "Single-origin, server-rendered app with no external API consumers today",
+    "A mobile app is only a roadmap possibility; nothing has been decided",
+    "The codebase is Python standard library only with no third-party dependencies",
+    "No authentication exists yet; the strategy must be introduced from scratch"
+  ],
+  "environment": {
+    "language_runtime": "Python 3, standard library only (http.server)",
+    "deployment": "single server, single origin, server-rendered HTML",
+    "users": "five-person internal team",
+    "existing_auth": "none implemented; placeholder sign-in form in static markup only",
+    "dependencies": "no third-party packages",
+    "client_types_today": "same-origin browser only",
+    "roadmap": "possible mobile app, undecided"
+  },
+  "evidence": [
+    "README.md: 'An internal admin panel for a five-person team. The app is server-rendered by its own web server and served from a single origin. There are no external API consumers today. The product roadmap mentions a possible mobile app, but nothing has been decided.' (Gloss: same-origin server-rendered internal tool; no external API clients; mobile app undecided.)",
+    "app.py: the server is built on Python's http.server with no web framework and no third-party dependencies; it serves a single GET page and binds to 127.0.0.1:8080.",
+    "app.py: the served page contains a placeholder sign-in form, but there is no login handling, session store, token issuance, or user-account code anywhere in the repository.",
+    "Repository: no configuration files, package manifests, or dependency locks exist, confirming the stdlib-only, zero-dependency state described in app.py."
+  ],
+  "alternatives": [
+    {
+      "id": "server_side_session_cookie",
+      "name": "Server-Side Session Cookie",
+      "description": "Authenticate at login, store a session record server-side, and set an opaque random session ID in an HttpOnly SameSite cookie that is validated against the store on each request.",
+      "advantages": [
+        "The session ID is opaque and HttpOnly, so it is not readable by client-side script",
+        "Logout and account disable take effect immediately by deleting the server-side session record",
+        "Matches the current same-origin, server-rendered, five-user internal app without unused machinery",
+        "Can be implemented with Python standard library primitives (e.g., the secrets module) given the zero-dependency codebase"
+      ],
+      "disadvantages": [
+        "Requires a session store (for example, SQLite or an in-memory map) that must persist across restarts or be regenerated",
+        "Non-browser clients would need a separate auth mechanism or a token-issuance path added later"
+      ],
+      "assumptions": [
+        "All current traffic is same-origin browser traffic",
+        "Operating a small session store is acceptable overhead"
+      ]
+    },
+    {
+      "id": "jwt_httponly_cookie",
+      "name": "JWT in HttpOnly Cookie",
+      "description": "Issue a signed JWT at login, return it in an HttpOnly SameSite cookie, and validate the signature on each request without server-side session state.",
+      "advantages": [
+        "Stateless validation, so no session store to operate",
+        "Cookie transport keeps the token out of reach of client-side script",
+        "The token format is consumable by future non-browser clients if the roadmap item materializes"
+      ],
+      "disadvantages": [
+        "Revocation before expiry requires a denylist, which reintroduces server-side state",
+        "Requires signing-key management plus either a JWT library or custom signing code",
+        "Token expiry and refresh logic adds complexity for an internal five-user tool"
+      ],
+      "assumptions": [
+        "A signing secret can be securely stored and rotated",
+        "Short token lifetimes or a denylist are acceptable for the revocation needs of an admin panel"
+      ]
+    },
+    {
+      "id": "jwt_bearer_header",
+      "name": "JWT Bearer Token in Header",
+      "description": "Issue a signed JWT at login, keep it in browser storage, and send it as an Authorization: Bearer header on each request.",
+      "advantages": [
+        "Stateless validation with no session store",
+        "The pattern transfers directly to mobile apps or external API clients",
+        "Decouples authentication from cookie handling and CSRF concerns"
+      ],
+      "disadvantages": [
+        "The token is accessible to client-side script, increasing theft exposure under cross-site scripting",
+        "No immediate revocation without a denylist",
+        "The CSRF-free property is unused today because all clients are same-origin browser pages"
+      ],
+      "assumptions": [
+        "Cross-site scripting risk can be adequately managed by the frontend",
+        "Future non-browser clients are likely enough to justify client-side token storage now"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "requirement_fit",
+      "name": "Requirement fit",
+      "weight": 0.25,
+      "rubric": [
+        "Mismatched for a same-origin, server-rendered internal app",
+        "Workable but carries machinery the current app does not use",
+        "Good fit for the current app shape",
+        "Excellent fit for a same-origin, server-rendered internal app"
+      ]
+    },
+    {
+      "id": "security_posture",
+      "name": "Security posture",
+      "weight": 0.25,
+      "rubric": [
+        "Sign-in state is readable by client-side script and hard to revoke",
+        "Sign-in state is shielded from script but hard to revoke",
+        "Sign-in state is shielded from script and immediately revocable"
+      ]
+    },
+    {
+      "id": "implementation_complexity",
+      "name": "Implementation complexity",
+      "weight": 0.15,
+      "rubric": [
+        "High: requires new dependencies or custom signing/crypto code",
+        "Medium: moderate state or token handling code",
+        "Low: minimal code with standard library primitives"
+      ]
+    },
+    {
+      "id": "revocability",
+      "name": "Revocability",
+      "weight": 0.15,
+      "rubric": [
+        "Sign-in state stays valid until token expiry with no way to revoke",
+        "Revocation possible only with extra bookkeeping such as a denylist",
+        "Immediate revocation by deleting server-side state"
+      ]
+    },
+    {
+      "id": "future_flexibility",
+      "name": "Future flexibility",
+      "weight": 0.1,
+      "rubric": [
+        "Requires a separate auth mechanism for non-browser clients",
+        "Adaptable to non-browser clients with additional work",
+        "Directly reusable by non-browser clients as-is"
+      ]
+    },
+    {
+      "id": "operational_cost",
+      "name": "Operational cost",
+      "weight": 0.1,
+      "rubric": [
+        "Highest ongoing burden (stateful store to run, or key management plus rotation)",
+        "Moderate ongoing burden",
+        "Lowest ongoing burden"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,150 @@
+{
+  "goal": "Implement the storage layer for notes-cli, a single-user note-taking CLI, by choosing how its note data is stored so that the milestone currently blocked on this decision can proceed.",
+  "question": "Which storage backend should notes-cli use to persist its note data, given that it is a single-user, offline, single-process Python 3.10+ CLI that currently declares zero runtime dependencies?",
+  "known_constraints": [
+    "Single-user application: README.md states notes-cli is a single-user note-taking CLI.",
+    "Fully offline: README.md states it runs entirely offline on the user's own machine and that no network access is required or desired.",
+    "Single writer: README.md states only one process touches the data at a time.",
+    "The project currently declares no runtime dependencies (pyproject.toml sets dependencies = []).",
+    "Runtime is Python >= 3.10, packaged with setuptools, with the console entry point notes.cli:main (pyproject.toml).",
+    "The storage-backend decision explicitly blocks the current milestone (TODO comment in src/notes/cli.py)."
+  ],
+  "environment": {
+    "language": "Python >= 3.10",
+    "build_backend": "setuptools>=68",
+    "runtime_dependencies": [],
+    "existing_source_files": ["src/notes/__init__.py", "src/notes/cli.py"],
+    "current_implementation_state": "Placeholder main() that prints 'notes-cli: no storage backend yet'; no storage module, data model, schema, or tests exist yet.",
+    "tests_present": false,
+    "git_repository": false
+  },
+  "evidence": [
+    "README.md: 'A single-user note-taking CLI. It runs entirely offline on the user's own machine; no network access is required or desired. Only one process touches the data at a time.'",
+    "pyproject.toml declares 'dependencies = []' and 'requires-python = \">=3.10\"', so the project currently has no third-party runtime dependencies.",
+    "pyproject.toml exposes the console script 'notes = notes.cli:main'.",
+    "src/notes/cli.py contains only a placeholder main() printing 'notes-cli: no storage backend yet' with the comment 'TODO: choose storage backend (this decision blocks the milestone)'.",
+    "src/notes/__init__.py is empty; the repository contains no storage code, no data model, no schema, and no tests.",
+    "Python's standard library ships both the sqlite3 and json modules, so a SQLite-backed or JSON-file-backed store can be built without adding dependencies; a Markdown-directory store needs only pathlib/os."
+  ],
+  "alternatives": [
+    {
+      "id": "sqlite-store",
+      "name": "SQLite database via stdlib sqlite3",
+      "description": "Persist notes as rows in a single SQLite database file (for example notes.db in a user data directory), accessed through Python's built-in sqlite3 module.",
+      "advantages": [
+        "Structured storage with typed columns, primary keys, and indexes; supports querying, sorting, and full-text search without loading every note into memory.",
+        "Transactional, crash-safe writes: a failed or interrupted write rolls back instead of corrupting existing notes.",
+        "Included in the Python standard library, so it adds no runtime dependency and requires no network access.",
+        "Accommodates future metadata (tags, timestamps, links) through schema changes rather than a format rewrite."
+      ],
+      "disadvantages": [
+        "The database is a binary format users cannot read or edit with a plain text editor, and it is less transparent for diffs, backups, and external tools.",
+        "Requires writing and maintaining a schema plus SQL statements, which is more code than a plain-file approach for a small CLI.",
+        "Schema migrations become part of the maintenance surface as the data model evolves."
+      ],
+      "assumptions": [
+        "The stdlib sqlite3 module is present in the CPython builds users will run (it is absent only in uncommon minimal builds).",
+        "The CLI will benefit from query capabilities such as search, listing by date, or tags as it grows."
+      ]
+    },
+    {
+      "id": "json-single-file",
+      "name": "Single JSON file store",
+      "description": "Keep all notes as a list of JSON objects in one file (for example notes.json in a user data directory), loaded into memory at startup and rewritten atomically on save, using the stdlib json module.",
+      "advantages": [
+        "Simplest implementation: read, modify, and write a single document using only stdlib json and pathlib.",
+        "Human-readable text format that users can inspect, back up, diff, and hand-edit; exporting is trivial.",
+        "Adds no runtime dependency, needs no network access, and involves no schema or migration machinery.",
+        "Moving or restoring the data is copying one file."
+      ],
+      "disadvantages": [
+        "Every command loads all notes into memory and every save rewrites the whole file, so performance degrades as the note count grows.",
+        "Crash safety depends entirely on the write pattern (for example atomic rename plus fsync); a mid-write failure can otherwise destroy the data file.",
+        "No built-in querying or indexing; search and filtering must be implemented in Python over the full list.",
+        "A single corrupted or hand-mangled file affects all notes at once."
+      ],
+      "assumptions": [
+        "The note count stays small enough (on the order of thousands) that loading everything into memory is acceptable.",
+        "Single-process writes remain true, so no file locking is needed (as stated in README.md)."
+      ]
+    },
+    {
+      "id": "markdown-directory",
+      "name": "One Markdown file per note in a directory",
+      "description": "Store each note as its own plain-text Markdown file inside a notes directory, using the filename as the note identifier and file metadata or front matter for timestamps and tags.",
+      "advantages": [
+        "Maximum interoperability: notes are directly readable and editable in any editor, greppable with standard tools, and work naturally with backup and file-sync tools.",
+        "Per-note files isolate corruption or accidental deletion to one note and make per-note diffs and backups natural.",
+        "Adds no runtime dependency and no schema; the filesystem itself is the store.",
+        "Suits a note-taking workflow where users may want direct access to their note text outside the CLI."
+      ],
+      "disadvantages": [
+        "Structured metadata (tags, timestamps, ordering) must be layered on with front matter or naming conventions and parsed manually, since nothing enforces a schema.",
+        "Listing and searching rely on filesystem iteration and text scanning, which is slower and more code than indexed queries for large collections.",
+        "Filenames constrain identifiers (length, forbidden characters), requiring slugification and rename handling.",
+        "Multi-note operations such as renaming a tag become multi-file updates with no transactional guarantee."
+      ],
+      "assumptions": [
+        "Users value direct, editor-level access to individual note files.",
+        "Note bodies are prose-like text that fits Markdown, and heavy structured fields are not required."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "data_integrity",
+      "name": "Data integrity under failure",
+      "weight": 0.25,
+      "rubric": [
+        "High risk of data loss or corruption on crash or failed write",
+        "Some risk: corruption possible in plausible failure cases unless extra safeguards are added",
+        "Safe with standard safeguards: corruption unlikely if best practices such as atomic writes or transactions are followed",
+        "Strong guarantees: partial failures roll back and existing data is preserved"
+      ]
+    },
+    {
+      "id": "query_and_scaling",
+      "name": "Query capability and scaling with note count",
+      "weight": 0.2,
+      "rubric": [
+        "No querying beyond scanning everything and performance degrades quickly as notes grow",
+        "Basic filtering over in-memory data, acceptable only for small collections",
+        "Adequate search and listing for the expected scale with acceptable performance",
+        "Efficient indexed search and sorting that scales to large collections"
+      ]
+    },
+    {
+      "id": "human_readability_portability",
+      "name": "Human readability and data portability",
+      "weight": 0.2,
+      "rubric": [
+        "Opaque format: users cannot inspect or edit their data with common tools",
+        "Readable in principle but awkward to inspect or edit by hand",
+        "Human-readable text: users can inspect, back up, and edit their data with common tools",
+        "Fully transparent: each unit of data is a plain text file that works naturally with editors, grep, and backup/sync tools"
+      ]
+    },
+    {
+      "id": "implementation_simplicity",
+      "name": "Implementation and maintenance simplicity",
+      "weight": 0.15,
+      "rubric": [
+        "Very high implementation and maintenance effort relative to the feature set",
+        "High effort: notable boilerplate or moving parts for a small CLI",
+        "Moderate effort: some extra machinery but manageable",
+        "Low effort: minimal code covering current needs",
+        "Minimal effort: trivially small code path"
+      ]
+    },
+    {
+      "id": "dependency_environment_fit",
+      "name": "Dependency footprint and offline environment fit",
+      "weight": 0.2,
+      "rubric": [
+        "Requires new third-party dependencies or network access",
+        "Standard library only but with portability caveats across common CPython builds",
+        "Standard library only, fully offline, portable across common CPython builds"
+      ]
+    }
+  ]
+}

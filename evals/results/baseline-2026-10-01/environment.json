@@ -1,0 +1,17 @@
+{
+  "runner": "run_fixed_state.py",
+  "model": "jev-latest",
+  "thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7
+  },
+  "decide_script": "/home/misty/Projects/autarch/.claude/worktrees/eval-baseline/skills/autarch/scripts/decide.py",
+  "runs_per_case": 3,
+  "started_at": "2026-10-01T01:46:59Z",
+  "finished_at": "2026-10-01T01:48:51Z",
+  "total_api_calls": 69,
+  "full_flow_agent_model": "sonnet",
+  "full_flow_finished_at": "2026-10-01T02:16:01Z"
+}
