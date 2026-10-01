@@ -1,13 +1,29 @@
 # Autarch 拡張開発の状態
 
-評価基盤が完成し、現行版の baseline を 2026-10-01 に記録した。次は「情報不足の分類と一度の追加調査」の設計に入る。ファイルは節目ごとに更新する。
+「情報不足の分類と一度の追加調査」を実装し、`extension-info-gap-2026-10-01` として再評価した(未 merge、branch `info-gap-investigation`)。固定 state トラックの2指標が大きく改善、full-flow は据え置き。次は必須条件の判定と、データが揃った閾値の見直し。ファイルは節目ごとに更新する。
 
-## 現在地: baseline 記録まで完了、拡張の設計が未着手
+## 現在地: 第1拡張(情報不足の分類と追加調査)の実装と再評価まで完了
 
-- 提案(`local-proposals/autarch-extension-proposal.ja.md`)の最初の実装段階が完了し、`main`(commit `87a336d`)に merge 済み。`origin/main` には未 push
-- 評価インフラは `evals/` に一式(`case_schema` / `judging` / `run_fixed_state` / `run_full_flow` / `report_baseline`)。通常テストは 160 passed / 2 skipped(live 系2件は `AUTARCH_EVAL_LIVE=1` を指定したときだけ走る)
-- baseline は `evals/results/baseline-2026-10-01/`(Jev 69回 + agent 5回の生記録、集計 `baseline.json`、日本語 `SUMMARY.md`、経緯メモ `notes.md`)
-- 文書: spec が `docs/superpowers/specs/2026-10-01-eval-baseline-design.md`、実装計画が `docs/superpowers/plans/2026-10-01-eval-baseline.md`
+- 第1拡張の実装: decide.py に Jev 新質問2種(noul `evidence_sufficiency` + choice `blocker_class` 4分類)、根拠充足性ゲート、state `revision` による一度制限。SKILL.md Step 11 を分岐形式に書き換え(調査→再実行→`investigation_exhausted`→問い直し)
+- 評価の拡張: 2段階ケース `evals/cases_loop/` 3件 + runner の2段階実行 + `report_baseline.py` の loop 集計と `--compare-to`。`judging.py` の指標定義は不変
+- 通常テストは 216 passed / 3 skipped(live 系3件は環境変数指定時のみ)
+- 再評価記録: `evals/results/extension-info-gap-2026-10-01/`(Jev 87回 + agent 5回、`baseline.json` に baseline との比較、`notes.md` に留保)
+- 文書: spec `docs/superpowers/specs/2026-10-01-info-gap-investigation-design.md`、計画 `docs/superpowers/plans/2026-10-01-info-gap-investigation.md`
+
+## 第1拡張の効果(baseline-2026-10-01 との比較)
+
+| 指標 | baseline | 拡張後 | 変化 |
+|---|---|---|---|
+| Appropriate Ask Rate | 53.33% | 76.67% | +23.3pt |
+| Unsafe Auto-selection Rate | 20.29% | 10.14% | −10.1pt |
+| evidence_removed 撹乱 | 0/6 | 0/6 | 変わらず |
+| Correct Selection Rate | 73.58% | 84.78% | +11.2pt |
+| completion_rate | 76.81% | 66.67% | −10.1pt(全て旧 Unsafe の転換) |
+| loop_pass_rate | — | 33.3%(3/9) | db は完全パス |
+
+- completion 低下の7実行はすべて以前 Unsafe だった info_missing / preference_needed ケース。クリアケースの完了低下なし。reorder / detail_asymmetry / violating_candidate は 6/6 維持
+- evidence_removed では Jev の sufficiency が 0.80〜0.84 まで下がるが、ゲート閾値 0.60 に届かない。**閾値見直しのデータが揃った**(生記録に分布あり)
+- full-flow は baseline と同水準(decision_ok 1/5)。agent 構築 state は `human_preference` がゲート前に発火しやすく、`evidence_insufficient` が返らず調査ループは不発。弱点は engine のルール順序と agent の state 構築に移った
 
 ## baseline が示した弱点: 候補作成ではなく、根拠が足りないときの挙動に偏る
 
@@ -40,16 +56,14 @@ merge 前の全体レビュー(opus、fresh context)は Critical 0・Important 3
 
 ## ネクストアクション
 
-1. **「情報不足の分類と一度の追加調査」の設計から始める**。brainstorming → spec → 実装計画の流れで。効果を見る指標は Appropriate Ask Rate・evidence_removed・Unsafe Auto-selection Rate の3つに決めてある
-2. 続いて**必須条件の判定(採点前の除外)**を入れる。現行 baseline では違反候補の誤採用が 0 件なので、この拡張の効果は除外した結果の候補数の扱い(1候補以下になった場合の確認)側に出る見込み
-3. 各拡張の後は**同じケースセット・シナリオで再実行**し、`baseline-2026-10-01/baseline.json` と比較する。指標の定義は `evals/judging.py` を流用して変えない
-4. 再実行の前に片付ける小作業(いずれも半日以内の見込み):
-   - 保留 Minor 7件の robustness pass。内容は(1)両 runner の subprocess timeout 未処理、(2)decide.py 出力不正時の分類を "unavailable" から "invalid" へ、(3)再集計が `runs_per_case` を見ず run 1〜3 だけ集計、(4)full-flow 指標の分母を judged 数ではなく5へ、(5)`environment.json` 欠落時の traceback を exit 2 へ、(6)workdir の skill symlink を相対 path へ、(7)`evidence_removed` で confidence 欠落を 0.0 扱いするのをやめる
-   - `evidence_removed` の合格基準(ASK_USER または confidence < auto_select)の見直し。baseline の confidence 分布と突き合わせる
-   - case set の見直し候補: database シナリオの「postgres 候補必須」の期待は、完全オフライン前提の fixture と噛み合わず、coverage を1シナリオ分だけ低く出している
-5. `origin/main` への push(本日時点で16 commit 未反映)は任意のタイミングで
+1. **必須条件の判定(採点前の除外)**を設計・実装する。brainstorming → spec → 実装計画の流れ。現行 baseline では違反候補の誤採用が 0 件なので、効果は除外した結果の候補数の扱い(1候補以下になった場合の確認)側に出る見込み
+2. **閾値の見直し**にデータが揃った。`sufficiency` は evidence_removed で 0.80〜0.84 に分布しており、0.60 では捕捉できない。auto_select(0.85)との関係も含めて再検討する
+3. loop ケースの修正: `auth_loop_resolvable`(human_preference が先発してゲート未到達)と `deploy_loop_resolvable`(state の薄さ不足)の設計直し。ループ機構自体は db で検証済み
+4. full-flow の課題: agent 構築 state で `human_preference` が先行発火し `evidence_insufficient` に届かない。engine のルール順序(human_preference と ゲートの前後)を含めた再検討
+5. 前段の小作業は引き続き保留(旧 Minor 7件の robustness pass、`evidence_removed` 合格基準の見直し、database シナリオの coverage 期待の調整)
+6. `origin/main` への push は任意のタイミング(第1拡張の merge 後が自然)
 
-閾値(auto_select 0.85 等)の見直しは、拡張を入れた後のデータが揃ってからに手を付ける。現段階は confidence の分布を記録するだけにとどめる。
+閾値変更の効果確認は、同じケースセットで再実行して `extension-info-gap-2026-10-01/baseline.json` と比較する。
 
 ## 留意事項
 

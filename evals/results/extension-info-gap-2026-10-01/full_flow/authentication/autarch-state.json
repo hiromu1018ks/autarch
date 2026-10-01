@@ -1,0 +1,137 @@
+{
+  "goal": "Deliver working sign-in for the internal admin-panel app and settle how authenticated state is carried between requests so the five-person team can implement it.",
+  "question": "Select the authentication state strategy that best matches the current admin-panel project.",
+  "known_constraints": [
+    "Python standard library only; the repository has no dependency manifest and no web framework.",
+    "The app is server-rendered HTML served from a single origin by its own web server.",
+    "The app is an internal tool for a five-person team with no external API consumers today.",
+    "A possible mobile app appears on the product roadmap but nothing has been decided."
+  ],
+  "environment": {
+    "repo": "admin-panel",
+    "language": "Python",
+    "framework": "Python stdlib http.server (no web framework)",
+    "app_type": "server-rendered HTML, single origin",
+    "users": "internal five-person team",
+    "external_api_consumers": "none today",
+    "roadmap": "possible mobile app mentioned, undecided",
+    "existing_auth_code": "none; sign-in form placeholder only",
+    "dependencies": "none (stdlib only)"
+  },
+  "evidence": [
+    "app.py is described as a 'Minimal server-rendered admin panel (stdlib only)' and uses http.server.BaseHTTPRequestHandler with a single do_GET handler and no POST, cookie, session, or token handling (app.py).",
+    "The served page already contains a sign-in form placeholder: <form action='/login'>sign-in form</form> (app.py).",
+    "The server runs as a single process bound to 127.0.0.1:8080 (app.py).",
+    "The README describes an internal admin panel for a five-person team, server-rendered by its own web server, served from a single origin, with no external API consumers today (README.md).",
+    "The README notes the product roadmap mentions a possible mobile app, but nothing has been decided (README.md).",
+    "The repository contains only app.py and README.md plus configuration; there is no requirements.txt, pyproject.toml, or other dependency manifest, so no third-party auth libraries are present (repository tree)."
+  ],
+  "alternatives": [
+    {
+      "id": "session_cookie",
+      "name": "Server-side session with HttpOnly cookie",
+      "description": "Issue an opaque session ID at login, keep the session state server-side, and return it as an HttpOnly Set-Cookie that the browser sends back on each request.",
+      "advantages": [
+        "Session state lives server-side, so access can be revoked immediately by deleting the session record.",
+        "An HttpOnly cookie is not readable by page JavaScript, which limits token theft through XSS.",
+        "Browsers attach cookies automatically on the same origin, so no client-side code is needed in the server-rendered pages.",
+        "Fits the stdlib-only constraint: a cookie header and an in-memory dict are sufficient for five users."
+      ],
+      "disadvantages": [
+        "A session store must exist server-side; an in-memory store is per-process and is lost on restart unless persisted.",
+        "Native mobile apps and non-browser clients need additional handling to persist and send the cookie."
+      ],
+      "assumptions": [
+        "The admin panel remains browser-accessed and same-origin.",
+        "A per-process or file-backed session store is acceptable for five users."
+      ]
+    },
+    {
+      "id": "bearer_token",
+      "name": "Stateless signed bearer token (JWT-style)",
+      "description": "Issue a self-contained signed token at login that the client stores and presents as an Authorization: Bearer header on each request, so verification needs no server-side session store.",
+      "advantages": [
+        "No server-side session storage; each request is verified from the token signature alone.",
+        "The same verification path serves any client type, including a future mobile app or API consumers."
+      ],
+      "disadvantages": [
+        "The client must hold the token in JavaScript-accessible storage and attach headers manually, which the current server-rendered form flow does not do.",
+        "Revoking a token before expiry requires additional deny-list machinery.",
+        "Expiry handling and signing-secret management add moving parts on top of the stdlib hmac primitives."
+      ],
+      "assumptions": [
+        "Clients are able to store tokens and attach Authorization headers.",
+        "Non-browser client reuse is a real near-term requirement rather than a speculative roadmap item."
+      ]
+    },
+    {
+      "id": "http_basic",
+      "name": "HTTP Basic authentication (no stored login state)",
+      "description": "Protect routes with HTTP Basic so credentials are supplied on every request and no login state is stored or issued at all.",
+      "advantages": [
+        "No session store, expiry, or revocation logic to build; stdlib Base64 decoding is sufficient.",
+        "Works identically for browsers, curl, and any future client because credentials travel with each request."
+      ],
+      "disadvantages": [
+        "Credentials are transmitted on every request and there is no logout action or session expiry.",
+        "Browsers show a native, non-customizable prompt, which does not match the sign-in form the current page already sketches.",
+        "Password entry and transmission are repeated per request rather than exchanged once for a short-lived credential."
+      ],
+      "assumptions": [
+        "Team members accept the browser's native Basic-auth prompt in place of a form-based sign-in."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "same_origin_browser_fit",
+      "name": "Same-origin browser fit",
+      "weight": 0.25,
+      "rubric": [
+        "Requires client-side storage and manual header handling in the browser",
+        "Usable in browsers with extra setup or code",
+        "Browser-native: automatic transport with no client-side code"
+      ]
+    },
+    {
+      "id": "stdlib_feasibility",
+      "name": "Stdlib-only feasibility",
+      "weight": 0.25,
+      "rubric": [
+        "Requires external dependencies or significant crypto/state machinery",
+        "Implementable with the stdlib but with several moving parts",
+        "Implementable with stdlib primitives in a small amount of code"
+      ]
+    },
+    {
+      "id": "revocation_lifecycle",
+      "name": "Logout and revocation lifecycle",
+      "weight": 0.2,
+      "rubric": [
+        "No logout or revocation path exists",
+        "Revocation requires additional machinery to build",
+        "Immediate revocation by deleting server-side state"
+      ]
+    },
+    {
+      "id": "roadmap_flexibility",
+      "name": "Roadmap flexibility (possible mobile app)",
+      "weight": 0.15,
+      "rubric": [
+        "Browser-only transport; new client types need a parallel mechanism",
+        "Works for non-browser clients with extra client-side handling",
+        "Transport-neutral across browser and non-browser clients"
+      ]
+    },
+    {
+      "id": "operational_risk",
+      "name": "Operational risk for a five-person internal team",
+      "weight": 0.15,
+      "rubric": [
+        "Multiple new secrets or stores to operate, or credentials sent on every request",
+        "One new component to operate (session store or signing secret)",
+        "No additional state or secrets beyond existing user credentials"
+      ]
+    }
+  ]
+}

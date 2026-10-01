@@ -1,0 +1,135 @@
+{
+  "goal": "Keep the csv-report internal tool effective at turning the weekly CSV export into a summary report, while keeping it easy for the analyst to run and for the maintainer to evolve.",
+  "question": "Should csv-report keep processing CSV with only the Python standard library, or add a third-party data-handling dependency for building the summary report?",
+  "known_constraints": [
+    "The tool must run as a single script on the analyst's laptop (README.md).",
+    "Weekly input file sizes are unmeasured and vary a lot between weeks (README.md).",
+    "The repository currently has no dependency manifest or packaging layer (repository file listing)."
+  ],
+  "environment": {
+    "language": "Python",
+    "interpreter_on_this_machine": "Python 3.14.7",
+    "project_type": "single-script internal CLI tool",
+    "runtime_context": "runs locally on the analyst's laptop, no server or deployment layer",
+    "dependency_manifest": "none present in the repository"
+  },
+  "evidence": [
+    "README.md describes csv-report as 'An internal tool that turns the weekly CSV export into a summary report' (README.md).",
+    "The tool 'runs as a single script on the analyst's laptop'; there is no server, packaging, or deployment layer (README.md).",
+    "Data volume is unmeasured: 'Nobody has measured how large the weekly files get; sizes vary a lot between weeks' (README.md, verbatim quote).",
+    "process.py is currently standard-library only; its docstring says '(stdlib only today)' and the module imports only the csv module (process.py).",
+    "The only implemented summary operation is a row count: summarize(rows) returns sum(1 for _ in rows) over a lazily streamed csv.reader, so memory use is bounded today (process.py).",
+    "No dependency manifest exists in the repository: no pyproject.toml, requirements.txt, setup.py, setup.cfg, Pipfile, or lock files were found (repository file listing).",
+    "The local interpreter is Python 3.14.7 (python3 --version on this machine)."
+  ],
+  "alternatives": [
+    {
+      "id": "keep_stdlib_csv",
+      "name": "Keep Standard Library Only",
+      "description": "Continue using Python's built-in csv module and implement any future summary logic as hand-written Python over streamed rows.",
+      "advantages": [
+        "Zero dependencies: the single script runs on any machine with a Python interpreter, matching the analyst's-laptop constraint with no installation step.",
+        "csv.reader already streams row by row, so memory stays bounded even when weekly file sizes are unknown.",
+        "No versions to pin, audit, or upgrade, so there is no supply-chain or upgrade maintenance for an unowned internal tool."
+      ],
+      "disadvantages": [
+        "Any real summary logic beyond a row count (grouping, aggregation, type conversion, date parsing) must be hand-written and tested by the maintainer.",
+        "Pure-Python row loops are the slowest of the three options if weekly files turn out to be very large.",
+        "Hand-rolled tabular transforms are a common source of subtle correctness bugs."
+      ],
+      "assumptions": [
+        "The report needs only simple operations; the only implemented operation today is a row count.",
+        "Unmeasured file sizes stay within what a single pure-Python pass can process in acceptable time."
+      ]
+    },
+    {
+      "id": "add_pandas",
+      "name": "Add pandas (DataFrame Library)",
+      "description": "Add pandas as a dependency and implement the summary report with DataFrame operations.",
+      "advantages": [
+        "Provides well-tested primitives for grouping, aggregation, type inference, date parsing, and report-shaped output.",
+        "Very large user base and documentation, so future maintainers and analyst-oriented examples are easy to find.",
+        "Reduces hand-written parsing and aggregation code relative to the standard library."
+      ],
+      "disadvantages": [
+        "Heavy install footprint (pandas plus numpy) on the analyst's laptop and requires introducing a dependency manifest the repository does not have.",
+        "The common read_csv path loads the whole file into memory, which is unbounded and unverified given that file sizes are unmeasured and vary a lot.",
+        "Version churn and upgrade maintenance for a single-script internal tool."
+      ],
+      "assumptions": [
+        "The analyst's laptop can install and maintain third-party packages.",
+        "Future summaries need DataFrame-style grouping and aggregation enough to justify the added install weight."
+      ]
+    },
+    {
+      "id": "add_polars",
+      "name": "Add polars (Streaming DataFrame Library)",
+      "description": "Add polars as a dependency and implement the summary report with its lazy/streaming query engine.",
+      "advantages": [
+        "Offers DataFrame-level aggregation primitives with a lazy engine designed to process data in bounded memory, which addresses the unmeasured file-size risk directly.",
+        "Columnar execution is fast on large tabular files, and the install footprint is smaller than pandas with numpy.",
+        "Reduces hand-written parsing and aggregation code relative to the standard library."
+      ],
+      "disadvantages": [
+        "Still introduces a third-party dependency and a manifest to maintain for a currently dependency-free single script.",
+        "Smaller ecosystem and fewer analysts familiar with it compared with pandas.",
+        "Pre-1.0-style API churn in parts of its surface has historically required code updates across versions."
+      ],
+      "assumptions": [
+        "Weekly files are large or the summary logic is complex enough that hand-written standard-library code becomes a real maintenance cost.",
+        "The analyst's environment can install compiled wheels."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "capability_fit",
+      "name": "Fit to current and foreseeable summary logic",
+      "weight": 0.25,
+      "rubric": [
+        "Requires hand-built code for basic aggregation",
+        "Supports basic aggregation with modest hand-written glue",
+        "Provides broad aggregation, grouping, and type handling out of the box"
+      ]
+    },
+    {
+      "id": "memory_scalability",
+      "name": "Robustness to large and unmeasured file sizes",
+      "weight": 0.25,
+      "rubric": [
+        "Loads the whole file into memory with no size safeguard",
+        "Streams row by row with bounded memory but pure-Python speed",
+        "Processes in bounded memory with a fast columnar or streaming engine"
+      ]
+    },
+    {
+      "id": "operational_simplicity",
+      "name": "Ease of running and maintaining the single-script internal tool",
+      "weight": 0.2,
+      "rubric": [
+        "Requires a new dependency manifest, environment setup, and ongoing upgrade maintenance",
+        "Adds a small amount of management overhead to the script",
+        "Runs on a bare Python installation with zero dependency management"
+      ]
+    },
+    {
+      "id": "correctness_risk",
+      "name": "Risk of subtle bugs in the summary output",
+      "weight": 0.15,
+      "rubric": [
+        "All parsing and aggregation hand-written with no external test coverage",
+        "Mostly hand-written with limited library help",
+        "Parsing and aggregation handled by a widely tested library implementation"
+      ]
+    },
+    {
+      "id": "processing_speed",
+      "name": "Throughput on large weekly files",
+      "weight": 0.15,
+      "rubric": [
+        "Pure-Python row loop, slowest of the options",
+        "Accelerated execution, fast on large files"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "goal": "The team is building 'status-page', a small containerized status web service, and must decide where to deploy it so it stays available without exceeding the team's capacity to operate it.",
+  "question": "Select the deployment target for the status-page service: a managed platform or a self-managed server, or another materially different hosting approach that fits the existing artifact.",
+  "known_constraints": [
+    "The team budget can afford either a managed platform or a small virtual server (README.md).",
+    "Only one person can handle server upkeep and there is no on-call rotation (README.md).",
+    "The deliverable is a containerized HTTP service shipped as a Dockerfile (Dockerfile).",
+    "There is no strong existing preference among hosting options (README.md)."
+  ],
+  "environment": {
+    "repository_files": ["README.md", "app.py", "Dockerfile", ".claude/"],
+    "runtime": "python:3.12-slim container running a single Python stdlib HTTP server",
+    "listen_address": "0.0.0.0:8080",
+    "statefulness": "stateless, no database and no persistence",
+    "deployment_automation": "none present in the repository"
+  },
+  "evidence": [
+    "README.md describes the project as 'a small containerized status web service' and states the team can afford either a managed platform or a small virtual server (repository README).",
+    "README.md states one person can handle server upkeep, there is no on-call rotation, and there is no strong preference yet (repository README).",
+    "The service is a single-file Python standard-library HTTP server listening on 0.0.0.0:8080 that returns 'status: ok' for any GET request, with no external dependencies, no database, and no persistent state (app.py).",
+    "The repository ships a minimal Dockerfile based on python:3.12-slim that copies app.py and runs it as the container entrypoint; it defines no health check and no non-root user (Dockerfile).",
+    "The repository contains no deployment manifests, CI configuration, tests, or infrastructure-as-code beyond the Dockerfile (repository tree: README.md, app.py, Dockerfile, .claude/)."
+  ],
+  "alternatives": [
+    {
+      "id": "managed_platform",
+      "name": "Managed container platform",
+      "description": "Deploy the existing Docker image to a managed container/PaaS platform that builds from the repository Dockerfile and operates the runtime.",
+      "advantages": [
+        "The provider handles host maintenance, process restarts, and TLS, so routine server upkeep disappears from the team's workload.",
+        "Deploys can be driven from the repository without server administration skills, which matters because there is no on-call rotation.",
+        "The team budget already accommodates a managed platform."
+      ],
+      "disadvantages": [
+        "Recurring platform cost applies even while the service sits idle.",
+        "The team has less control over the underlying host, networking, and data location.",
+        "Availability and pricing become dependent on the provider."
+      ],
+      "assumptions": [
+        "A managed platform plan is available that runs a plain container listening on a port.",
+        "The service has no latency or compliance requirements that a managed platform cannot satisfy."
+      ]
+    },
+    {
+      "id": "self_managed_vps",
+      "name": "Self-managed small virtual server",
+      "description": "Rent a small virtual server and run the existing Docker image on it, with one team member responsible for upkeep.",
+      "advantages": [
+        "Steady-state cost for a single small service is typically the lowest of the options, and the budget covers it.",
+        "The team keeps full control over host configuration, networking, and data location.",
+        "The README confirms one person can handle server upkeep, so this option is staffed."
+      ],
+      "disadvantages": [
+        "That one person must perform OS updates, certificate renewal, and incident response with no on-call rotation behind them.",
+        "A single server is a single point of failure with no automated platform-level recovery.",
+        "Uptime depends on one person's availability, which is a weak position for a service that reports status."
+      ],
+      "assumptions": [
+        "The designated person has ongoing time and access for routine upkeep.",
+        "Occasional downtime during maintenance is acceptable for this status service."
+      ]
+    },
+    {
+      "id": "managed_serverless",
+      "name": "Managed serverless function",
+      "description": "Port the single GET endpoint to a managed serverless function platform and retire the container artifact.",
+      "advantages": [
+        "No servers to maintain and effectively no idle cost, since the provider handles scaling and availability.",
+        "The service is a single stateless GET endpoint, so the port is small and low-risk.",
+        "Fits the absence of on-call rotation because the provider owns the runtime."
+      ],
+      "disadvantages": [
+        "Requires rewriting the service away from the existing Dockerfile artifact that the repository currently ships.",
+        "Cold starts and platform-specific limits add moving parts to a service meant to answer simple status checks.",
+        "Creates lock-in to a provider-specific deployment model."
+      ],
+      "assumptions": [
+        "The endpoint's fixed 'status: ok' response can be preserved as a function.",
+        "The team accepts maintaining a small non-container code path instead of the current Docker image."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "operational_burden",
+      "name": "Operational burden",
+      "weight": 0.35,
+      "rubric": [
+        "Heavy burden: OS updates, patching, and incident response fall entirely on one person with no on-call rotation.",
+        "Moderate burden: occasional manual maintenance, with unclear coverage when that person is unavailable.",
+        "Light burden: the provider operates the infrastructure and restarts; the team only manages deploys."
+      ]
+    },
+    {
+      "id": "uptime_reliability",
+      "name": "Uptime reliability",
+      "weight": 0.3,
+      "rubric": [
+        "Single point of failure with no automated recovery.",
+        "Automated process restarts on one host but no redundancy.",
+        "Provider-managed availability with automated health checks and recovery."
+      ]
+    },
+    {
+      "id": "deployment_fit",
+      "name": "Fit with the existing container artifact",
+      "weight": 0.2,
+      "rubric": [
+        "Requires rewriting the service before it can run.",
+        "Runs the service with minor changes to code or configuration.",
+        "Runs the existing Dockerfile as-is with no code changes."
+      ]
+    },
+    {
+      "id": "cost_efficiency",
+      "name": "Cost efficiency",
+      "weight": 0.15,
+      "rubric": [
+        "Cost clearly exceeds what the team can afford.",
+        "Cost is within budget but noticeably above the cheapest option.",
+        "Cost is minimal and well within budget."
+      ]
+    }
+  ]
+}

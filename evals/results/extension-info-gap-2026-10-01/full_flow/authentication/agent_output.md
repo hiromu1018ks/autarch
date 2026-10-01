@@ -1,0 +1,3 @@
+Autarchによる決定が完了しました(終了コード 0、`SELECT_OPTION`)。
+
+**結果の報告：** Jev(jev-latest)は admin-panel の認証状態戦略として **`session_cookie`(サーバーサイドセッション + HttpOnly Cookie)を選択**しました。理由は「Choice と Score が一致(confidence 1.00)」で、根拠は `app.py:1` の「stdlib only のサーバーレンダリング製・単一オリジン構成」と `README.md` の「5人チーム向け内部ツール、外部APIコンシューマなし」という証拠に基づき、ブラウザ自動送信・即時失効・stdlibのみでの実装可能性という基準で上位スコア(複合 0.7725、次点 http_basic 0.6807、bearer_token 0.4308)を獲得したためです。確率分布は session_cookie 1.0 / http_basic 0.0 / bearer_token 0.0、Jevの信頼度は **1.0** です。なお score_summary が示す通り、この選択は「モバイルアプリの可能性」というロードマップ上の未決事項では弱い(roadmap_flexibility 0.1)ので、モバイル対応が具体化した時点で見直しが必要です。判断材料は `autarch-state.json`、解決結果は `autarch-resolution.json` に保存済みです。

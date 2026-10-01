@@ -1,0 +1,133 @@
+{
+  "goal": "Adopt a single test framework for pricing-service that keeps the existing suite running in CI and stays maintainable going forward.",
+  "question": "Which test framework should pricing-service standardize on going forward, given its existing pytest-based one-file suite, its CI workflow, and its zero-runtime-dependency packaging?",
+  "known_constraints": [
+    "CI must keep running the test suite on every push in the existing GitHub Actions workflow.",
+    "The test framework must be installable through the dev extra, because CI runs `pip install -e .[dev]` before testing.",
+    "README and onboarding documentation currently assume pytest, so any non-pytest choice requires documentation updates."
+  ],
+  "environment": {
+    "language": "Python",
+    "python_requirement": ">=3.10",
+    "runtime_dependencies": 0,
+    "repo_layout": "src layout (src/pricing) with tests in tests/",
+    "ci": "GitHub Actions workflow 'ci' on push: pip install -e .[dev], then pytest",
+    "test_files": 1,
+    "current_framework": "pytest>=8 declared as a dev optional dependency"
+  },
+  "evidence": [
+    "pyproject.toml declares dev optional-dependency pytest>=8 while the project has zero runtime dependencies (pyproject.toml).",
+    "The existing suite is a single file, tests/test_pricing.py, written with pytest idioms: `import pytest`, @pytest.mark.parametrize, and plain assert statements (tests/test_pricing.py).",
+    "README states: 'All tests run under pytest in CI; the suite and onboarding docs assume pytest.' (README.md)",
+    "CI installs the package with its dev extra and runs pytest as the only test step (github/workflows/ci.yml).",
+    "No unittest usage, no [tool.pytest.ini_options] configuration, and no other test tooling exists anywhere in the repository (repository scan).",
+    "The package under test is a small pure-function service: src/pricing/__init__.py defines a single function tier_price(seats) (src/pricing/__init__.py).",
+    "The project targets Python >= 3.10 (pyproject.toml)."
+  ],
+  "alternatives": [
+    {
+      "id": "keep_pytest",
+      "name": "Keep pytest (status quo)",
+      "description": "Continue using pytest>=8 as the project's test framework with no change to dependencies, tests, or CI.",
+      "advantages": [
+        "The existing test file runs unchanged; it already uses @pytest.mark.parametrize and plain asserts.",
+        "CI and the dev extra already install and invoke pytest, so there is no migration work.",
+        "README and onboarding docs already assume pytest, so no documentation update is needed."
+      ],
+      "disadvantages": [
+        "Keeps a third-party dev dependency for a package that otherwise has zero dependencies.",
+        "Framework upgrades must be tracked across future pytest major versions."
+      ],
+      "assumptions": [
+        "pytest>=8 remains actively maintained on Python >= 3.10.",
+        "The team is not required to adopt a stdlib-only testing policy."
+      ]
+    },
+    {
+      "id": "migrate_unittest",
+      "name": "Migrate to stdlib unittest",
+      "description": "Replace pytest with the Python standard library unittest module and drop the pytest dev dependency.",
+      "advantages": [
+        "Removes the only third-party dev dependency, since unittest ships with Python >= 3.10.",
+        "No upstream framework upgrades to track; the stdlib lifecycle follows the Python version in use."
+      ],
+      "disadvantages": [
+        "The existing test must be rewritten from @pytest.mark.parametrize to unittest.TestCase methods or subTest.",
+        "CI needs a new runner invocation and README's statement that the suite assumes pytest becomes false, so docs must change."
+      ],
+      "assumptions": [
+        "The one-file suite will not grow to need pytest fixtures or plugins.",
+        "The team accepts TestCase-style assertion methods instead of plain assert statements."
+      ]
+    },
+    {
+      "id": "keep_pytest_plugin_stack",
+      "name": "Keep pytest plus curated plugin stack",
+      "description": "Keep pytest>=8 and standardize going forward by adding a curated plugin set, for example pytest-cov and pytest-xdist, to the dev extra and CI.",
+      "advantages": [
+        "The existing test file, CI invocation, and README all keep working because plugins are additive.",
+        "Adds coverage reporting and parallel execution ahead of any suite growth."
+      ],
+      "disadvantages": [
+        "Grows the dev dependency list and adds plugin-version compatibility constraints on top of pytest.",
+        "Coverage and parallelism are not required by anything currently visible in the repository."
+      ],
+      "assumptions": [
+        "The suite is expected to grow enough that coverage and parallel runs pay off.",
+        "Plugin release cadence stays compatible with pytest>=8."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "existing_suite_compatibility",
+      "name": "Existing suite compatibility",
+      "weight": 0.25,
+      "rubric": [
+        "Requires a full rewrite of the existing suite",
+        "Requires a partial rewrite of the existing suite",
+        "Runs the existing suite unchanged"
+      ]
+    },
+    {
+      "id": "ci_and_docs_integration",
+      "name": "CI and documentation integration",
+      "weight": 0.2,
+      "rubric": [
+        "Requires rewriting CI and updating docs",
+        "Requires minor CI or doc adjustment",
+        "No CI or doc change needed"
+      ]
+    },
+    {
+      "id": "maintenance_burden",
+      "name": "Maintenance burden",
+      "weight": 0.2,
+      "rubric": [
+        "High burden: stagnant or deprecated tooling",
+        "Moderate burden: periodic third-party updates to track",
+        "Low burden: stable and actively maintained or stdlib-provided"
+      ]
+    },
+    {
+      "id": "dependency_footprint",
+      "name": "Dependency footprint",
+      "weight": 0.15,
+      "rubric": [
+        "Adds several new dependencies",
+        "Keeps or adds a single dev dependency",
+        "Adds no dependencies"
+      ]
+    },
+    {
+      "id": "future_suitability",
+      "name": "Future suitability for suite growth",
+      "weight": 0.2,
+      "rubric": [
+        "Limited support for parametrization and fixtures",
+        "Basic support with extra code",
+        "First-class parametrization, fixtures, and plugin ecosystem"
+      ]
+    }
+  ]
+}
