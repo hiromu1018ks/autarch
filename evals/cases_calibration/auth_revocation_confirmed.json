@@ -1,0 +1,88 @@
+{
+  "id": "auth_revocation_confirmed",
+  "topic": "authentication",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose authentication state for a browser-based staff portal",
+    "question": "Which authentication state scheme fits the account revocation policy?",
+    "known_constraints": [
+      "staff must remain signed in across application restarts",
+      "requests must validate authentication"
+    ],
+    "environment": {
+      "form": "browser staff portal",
+      "transport": "https"
+    },
+    "evidence": [
+      "Scenario AUTH baseline: there are no non-browser clients; either design can use secure cookies and survive application restarts.",
+      "Scenario AUTH baseline: a durable session store may be added; the pure JWT design validates signature and a 60-minute expiry locally, without introspection, denylist, or per-account state.",
+      "Scenario AUTH baseline: the security owner has not specified whether account disablement must revoke existing credentials immediately or may wait until expiry.",
+      "JWT expiration claim semantics are defined in RFC 7519 section 4.1.4: https://www.rfc-editor.org/rfc/rfc7519.html#section-4.1.4",
+      "Scenario AUTH confirmed: account disablement must invalidate the next authenticated request immediately, including credentials issued earlier; waiting for token expiry is forbidden.",
+      "Scenario AUTH confirmed: the session design checks the durable session row on every request; disabling an account synchronously deletes all its session rows. The JWT alternative remains strictly stateless."
+    ],
+    "alternatives": [
+      {
+        "id": "server_session",
+        "name": "Durable server-side sessions",
+        "description": "Secure cookie carries an opaque session identifier; each request looks up a durable server-side row. Account disablement can delete rows.",
+        "advantages": [
+          "central control of active sessions",
+          "per-request server validation"
+        ],
+        "disadvantages": [
+          "requires a durable session store and a lookup on each request"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "jwt_local",
+        "name": "Purely local JWT validation",
+        "description": "Secure cookie carries a signed token valid for 60 minutes; validate signature and expiry only, with no revocation lookup.",
+        "advantages": [
+          "no session lookup per request",
+          "no durable session rows"
+        ],
+        "disadvantages": [
+          "previously issued tokens remain accepted until expiry under this design"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.7,
+        "rubric": [
+          "Poor fit",
+          "Acceptable fit",
+          "Good fit",
+          "Excellent fit"
+        ]
+      },
+      {
+        "id": "integration_cost",
+        "name": "Implementation and operations cost",
+        "weight": 0.3,
+        "rubric": [
+          "High cost",
+          "Moderate cost",
+          "Low cost"
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": [
+      "SELECT_OPTION",
+      "SELECT_OPTION_WITH_CAUTION"
+    ],
+    "acceptable_selections": [
+      "server_session"
+    ],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

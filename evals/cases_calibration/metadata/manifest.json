@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "frozen_at": "2026-10-01T11:21:27.753954+00:00",
+  "cases": [
+    {
+      "id": "db_multi_host_missing",
+      "topic": "database",
+      "pair_id": "db_multi_host",
+      "path": "../db_multi_host_missing.json",
+      "sha256": "7d2905a39c7c7aae039cae4234db25edd3ef019204b5401939c61b65069c31c0"
+    },
+    {
+      "id": "db_multi_host_confirmed",
+      "topic": "database",
+      "pair_id": "db_multi_host",
+      "path": "../db_multi_host_confirmed.json",
+      "sha256": "803d007ccb6a7c74dba6686e87929e685a3210e2c112fb2d7b7c9eb9d12552ef"
+    },
+    {
+      "id": "auth_revocation_missing",
+      "topic": "authentication",
+      "pair_id": "auth_revocation",
+      "path": "../auth_revocation_missing.json",
+      "sha256": "8e30dbbc564224692fc0d1cced9b400a168289b11bb8f916d7fc49c31750765f"
+    },
+    {
+      "id": "auth_revocation_confirmed",
+      "topic": "authentication",
+      "pair_id": "auth_revocation",
+      "path": "../auth_revocation_confirmed.json",
+      "sha256": "9687e3b277c7aab31da4e45497cc56221b6ef4a45e6134a1ba6205d7ffdbe88e"
+    },
+    {
+      "id": "test_browser_integration_missing",
+      "topic": "test_framework",
+      "pair_id": "test_browser_integration",
+      "path": "../test_browser_integration_missing.json",
+      "sha256": "6395a60e80babe4552ebc454f1f058db2891864ef794b0459fcde0693c5b7eb6"
+    },
+    {
+      "id": "test_browser_integration_confirmed",
+      "topic": "test_framework",
+      "pair_id": "test_browser_integration",
+      "path": "../test_browser_integration_confirmed.json",
+      "sha256": "e5b93bc71eeeeb3a879f468bbbc7daff3baf00fc47e52e3278b2bb6b40263e84"
+    },
+    {
+      "id": "dep_binary_permission_missing",
+      "topic": "dependency",
+      "pair_id": "dep_binary_permission",
+      "path": "../dep_binary_permission_missing.json",
+      "sha256": "1b5787605c6252437a3961362f295ded5e952dedbc72f4f3a1aa65f09160f0e8"
+    },
+    {
+      "id": "dep_binary_permission_confirmed",
+      "topic": "dependency",
+      "pair_id": "dep_binary_permission",
+      "path": "../dep_binary_permission_confirmed.json",
+      "sha256": "ab976e19658550da858766f85e1ff0753238151ca6b3adab7026b900828346ee"
+    },
+    {
+      "id": "deploy_persistent_disk_missing",
+      "topic": "deployment",
+      "pair_id": "deploy_persistent_disk",
+      "path": "../deploy_persistent_disk_missing.json",
+      "sha256": "065c85ec4baef0cb13537dab7a1052121f6b580c785470dfd10109a9df018358"
+    },
+    {
+      "id": "deploy_persistent_disk_confirmed",
+      "topic": "deployment",
+      "pair_id": "deploy_persistent_disk",
+      "path": "../deploy_persistent_disk_confirmed.json",
+      "sha256": "4c7693bdcbdf7731eab161d23042f62dc1e8c19b10efcf1536b485c45515b29c"
+    }
+  ]
+}

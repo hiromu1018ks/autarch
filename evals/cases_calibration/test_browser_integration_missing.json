@@ -1,0 +1,84 @@
+{
+  "id": "test_browser_integration_missing",
+  "topic": "test_framework",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose a Python test runner for an API and browser regression suite",
+    "question": "Which runner should integrate new API tests with the existing browser suite?",
+    "known_constraints": [
+      "new tests must cover API behavior and browser workflows in one CI job",
+      "supported browsers must retain their coverage"
+    ],
+    "environment": {
+      "language": "python",
+      "form": "web app regression tests"
+    },
+    "evidence": [
+      "Scenario TEST baseline: API tests are new; there is no existing Python unit-test suite to migrate, and CI can install either runner.",
+      "Scenario TEST baseline: browser regression tests already exist, but their runner, fixture interfaces, and browser matrix have not been inspected.",
+      "Scenario TEST baseline: integration work depends on whether existing browser lifecycle fixtures belong to pytest or unittest; either runner supports ordinary Python API assertions.",
+      "Playwright official Python documentation describes pytest browser fixtures and browser matrix options: https://playwright.dev/python/docs/test-runners"
+    ],
+    "alternatives": [
+      {
+        "id": "pytest_integrated",
+        "name": "Pytest with existing browser fixtures",
+        "description": "Run API and browser tests under pytest, using pytest-playwright fixtures when present.",
+        "advantages": [
+          "reuse native pytest fixtures",
+          "browser matrix integration through the plugin"
+        ],
+        "disadvantages": [
+          "third-party test runner dependency"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "unittest_runner",
+        "name": "Standard unittest runner",
+        "description": "Run new API and browser tests with python -m unittest; rewrite any pytest-specific fixture and matrix orchestration.",
+        "advantages": [
+          "standard library runner",
+          "ordinary API assertions supported"
+        ],
+        "disadvantages": [
+          "pytest fixtures are not injected by the unittest runner",
+          "plugin browser matrix would need new orchestration"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.7,
+        "rubric": [
+          "Poor fit",
+          "Acceptable fit",
+          "Good fit",
+          "Excellent fit"
+        ]
+      },
+      {
+        "id": "integration_cost",
+        "name": "Implementation and operations cost",
+        "weight": 0.3,
+        "rubric": [
+          "High cost",
+          "Moderate cost",
+          "Low cost"
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": [
+      "ASK_USER"
+    ],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

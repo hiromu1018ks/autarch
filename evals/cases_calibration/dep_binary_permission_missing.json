@@ -1,0 +1,83 @@
+{
+  "id": "dep_binary_permission_missing",
+  "topic": "dependency",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose a PDF text extraction dependency for a controlled Python runtime",
+    "question": "Which extractor can be installed and run in the production sandbox?",
+    "known_constraints": [
+      "extract searchable text from unencrypted text PDFs within five seconds per document",
+      "deployment must comply with the sandbox installation policy"
+    ],
+    "environment": {
+      "language": "python",
+      "form": "sandboxed document ingestion worker"
+    },
+    "evidence": [
+      "Scenario DEP baseline: the input is digitally generated text PDFs, without OCR, encryption, or advanced layout reconstruction.",
+      "Scenario DEP baseline: the authored fixture benchmark is 0.3 seconds per document with pdftotext and 4.0 seconds with pypdf; both meet the five-second budget, but pdftotext has lower billed CPU usage. The runtime allows pure Python packages.",
+      "Scenario DEP baseline: whether an external executable may be installed or invoked has not been confirmed; pdftotext is not preinstalled.",
+      "pypdf documentation describes a pure Python PDF library with text extraction: https://pypdf.readthedocs.io/en/stable/"
+    ],
+    "alternatives": [
+      {
+        "id": "pypdf_python",
+        "name": "pypdf in process",
+        "description": "Install pypdf as a Python package and extract text in the Python process for the specified unencrypted PDFs.",
+        "advantages": [
+          "no external extraction executable",
+          "fits the allowed Python package installation"
+        ],
+        "disadvantages": [
+          "must handle PDF-specific extraction details"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "poppler_command",
+        "name": "Poppler pdftotext subprocess",
+        "description": "Install the native Poppler pdftotext executable and invoke it as a subprocess from Python.",
+        "advantages": [
+          "lower billed CPU usage in the fixture benchmark",
+          "simple subprocess interface"
+        ],
+        "disadvantages": [
+          "requires an external native executable in the runtime"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.7,
+        "rubric": [
+          "Poor fit",
+          "Acceptable fit",
+          "Good fit",
+          "Excellent fit"
+        ]
+      },
+      {
+        "id": "integration_cost",
+        "name": "Implementation and operations cost",
+        "weight": 0.3,
+        "rubric": [
+          "High cost",
+          "Moderate cost",
+          "Low cost"
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": [
+      "ASK_USER"
+    ],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

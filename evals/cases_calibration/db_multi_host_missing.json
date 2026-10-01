@@ -1,0 +1,84 @@
+{
+  "id": "db_multi_host_missing",
+  "topic": "database",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose the transaction store for an inventory reservation service",
+    "question": "Which storage engine fits the service topology and concurrent write requirements?",
+    "known_constraints": [
+      "reservation updates must be transactional",
+      "committed inventory records must survive process restarts"
+    ],
+    "environment": {
+      "language": "python",
+      "form": "inventory reservation service"
+    },
+    "evidence": [
+      "Scenario DB baseline: every reservation modifies shared stock counters; records are structured and fit either relational engine.",
+      "Scenario DB baseline: deployment permissions allow both an embedded database and a database server; network access is allowed.",
+      "Scenario DB baseline: the deployment owner has not yet specified whether one local process writes or multiple hosts must write concurrently.",
+      "SQLite official guidance recommends a client/server database when many network clients write the same database: https://www.sqlite.org/whentouse.html"
+    ],
+    "alternatives": [
+      {
+        "id": "sqlite",
+        "name": "Embedded SQLite",
+        "description": "Each application process opens a SQLite database file directly; no coordinating application server is included.",
+        "advantages": [
+          "minimal setup on a single local writer",
+          "transactions in a local file"
+        ],
+        "disadvantages": [
+          "shared file access across hosts needs careful locking",
+          "only one writer at a time per database file"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "postgres",
+        "name": "PostgreSQL server",
+        "description": "All application hosts connect to one client/server relational database with transaction management.",
+        "advantages": [
+          "multiple clients over the network",
+          "central transaction store"
+        ],
+        "disadvantages": [
+          "a running database server is required"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.7,
+        "rubric": [
+          "Poor fit",
+          "Acceptable fit",
+          "Good fit",
+          "Excellent fit"
+        ]
+      },
+      {
+        "id": "integration_cost",
+        "name": "Implementation and operations cost",
+        "weight": 0.3,
+        "rubric": [
+          "High cost",
+          "Moderate cost",
+          "Low cost"
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": [
+      "ASK_USER"
+    ],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

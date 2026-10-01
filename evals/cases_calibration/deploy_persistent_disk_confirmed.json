@@ -1,0 +1,89 @@
+{
+  "id": "deploy_persistent_disk_confirmed",
+  "topic": "deployment",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose hosting for a container that processes document uploads",
+    "question": "Which hosting plan fits the service data persistence requirements?",
+    "known_constraints": [
+      "the container must be reachable over HTTPS",
+      "required data must survive routine redeployments"
+    ],
+    "environment": {
+      "artifact": "container image",
+      "form": "document upload service"
+    },
+    "evidence": [
+      "Scenario DEPLOY baseline: traffic is small and steady; both offered plans support the image, HTTPS, adequate CPU, and memory.",
+      "Scenario DEPLOY baseline: the offered managed plan has ephemeral local storage and no persistent volume option; the offered virtual server has a persistent disk and scheduled backups.",
+      "Scenario DEPLOY baseline: the application team has not confirmed whether uploads and processing checkpoints must stay on local disk or are already externalized.",
+      "These capabilities describe the two fictional evaluation plans only, not all managed platforms or all virtual servers.",
+      "Scenario DEPLOY confirmed: the released application stores uploaded documents and resumable processing checkpoints on local disk; both must survive container replacements.",
+      "Scenario DEPLOY confirmed: no external storage integration or application rewrite is permitted for this release; the team can maintain the offered server and its backups."
+    ],
+    "alternatives": [
+      {
+        "id": "ephemeral_managed",
+        "name": "Offered managed container plan",
+        "description": "Run on the offered plan with ephemeral local storage, built-in HTTPS, and no attachable persistent volume.",
+        "advantages": [
+          "managed runtime operations",
+          "built-in HTTPS"
+        ],
+        "disadvantages": [
+          "local files disappear on replacement",
+          "this plan has no persistent disk option"
+        ],
+        "assumptions": []
+      },
+      {
+        "id": "persistent_server",
+        "name": "Offered persistent-disk server",
+        "description": "Run the image on the offered virtual server with persistent disk, HTTPS configuration, and scheduled backups.",
+        "advantages": [
+          "durable local storage across container replacement",
+          "control of backups"
+        ],
+        "disadvantages": [
+          "team maintains the host and HTTPS configuration"
+        ],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.7,
+        "rubric": [
+          "Poor fit",
+          "Acceptable fit",
+          "Good fit",
+          "Excellent fit"
+        ]
+      },
+      {
+        "id": "integration_cost",
+        "name": "Implementation and operations cost",
+        "weight": 0.3,
+        "rubric": [
+          "High cost",
+          "Moderate cost",
+          "Low cost"
+        ]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": [
+      "SELECT_OPTION",
+      "SELECT_OPTION_WITH_CAUTION"
+    ],
+    "acceptable_selections": [
+      "persistent_server"
+    ],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}
