@@ -30,17 +30,112 @@ Decision material sent to Jev (question, alternatives, evidence, criteria) is al
 
 ### Decision policy
 
-Every invocation runs through the same gates, in order:
+After input validation and hard-constraint checks, the Jev evaluation runs through these gates, in order:
 
 1. **Provider error** → `PROVIDER_UNAVAILABLE` — never auto-select on a failed/unusable API response
 2. **Human-preference gate** (Noul ≥ 0.70) → `ASK_USER` — if the decision depends on your taste or intent, Autarch refuses to choose even at high confidence
-3. **Choice/Score consistency** — if the Choice winner and the weighted Score winner disagree → `ASK_USER`
-4. **Probability gap** — if the top two options are within 0.15 of each other → `ASK_USER`
-5. **Confidence bands** — ≥ 0.85 → `SELECT_OPTION`, ≥ 0.60 → `SELECT_OPTION_WITH_CAUTION`, else → `ASK_USER`
+3. **Evidence sufficiency** (< 0.60 with blocker confidence ≥ 0.50) → `ASK_USER` — investigate missing facts or repair biased material once; an existing revision exhausts that round. For preference or tie blockers, ask one deciding question.
+4. **Choice/Score consistency** — if the Choice winner and the weighted Score winner disagree → `ASK_USER`
+5. **Probability gap** — if the top two options are within 0.15 of each other → `ASK_USER`
+6. **Confidence bands** — ≥ 0.85 → `SELECT_OPTION`, ≥ 0.60 → `SELECT_OPTION_WITH_CAUTION`, else → `ASK_USER`
 
 When the decision comes back to you, Autarch does **not** repeat the original technical question. It reduces the decision to the smallest question only you can answer (usually one distinguishing factor).
 
 Note: Choice `probabilities` are a distribution over alternatives (they sum to ~1), not scores. Multi-criterion evaluation is reported separately in `score_summary`.
+
+### Evidence-backed hard constraints
+
+Before calling Jev, the engine checks explicit mandatory requirements in
+`hard_constraints`. Preferences belong in `criteria`. Each requirement must
+assess every original option using `met`, `violated`, or `unknown`.
+`met` and `violated` require at least one referenced `verified` record in
+`evidence_records`; inference alone stays `unknown`. Records include the
+fact, source, and a timezone-aware RFC 3339 `checked_at`. The agent rechecks
+changing facts at decision time.
+
+This complete minimal state illustrates an example conversation in which
+the user explicitly confirmed both implementations' offline operation.
+Replace the example statements, source, and timestamp with facts checked
+for your actual decision; this is not a claim about an existing project.
+
+```json
+{
+  "goal": "Store a local personal task list.",
+  "question": "Choose a storage format for the offline task tool.",
+  "known_constraints": [
+    "Must work fully offline."
+  ],
+  "environment": {},
+  "evidence": [
+    "The user confirmed that both proposed implementations operate without network calls."
+  ],
+  "alternatives": [
+    {
+      "id": "sqlite",
+      "name": "SQLite file",
+      "description": "Store tasks in a local SQLite database."
+    },
+    {
+      "id": "json",
+      "name": "JSON file",
+      "description": "Store tasks in a local JSON file."
+    }
+  ],
+  "criteria": [],
+  "evidence_records": [
+    {
+      "id": "runtime_confirmation",
+      "fact": "The user confirmed that both the SQLite and JSON implementations operate locally without network calls.",
+      "source": "example conversation, user message 2",
+      "checked_at": "2026-10-01T09:00:00Z",
+      "kind": "verified"
+    }
+  ],
+  "hard_constraints": [
+    {
+      "id": "offline",
+      "description": "Must work fully offline.",
+      "assessments": {
+        "sqlite": {
+          "status": "met",
+          "evidence_ids": [
+            "runtime_confirmation"
+          ]
+        },
+        "json": {
+          "status": "met",
+          "evidence_ids": [
+            "runtime_confirmation"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+A violated option is excluded. An unknown condition on a non-excluded
+option stops comparison with `ASK_USER / constraint_unverified`; the agent
+investigates once and re-runs with `revision.action=investigation`. This
+uses the same single revision round as evidence investigation and material
+repair. An existing revision means `investigation_exhausted`: the agent
+asks one deciding question rather than starting another investigation.
+Unknown remains unknown if nothing can be verified.
+
+With fewer than two eligible options, the engine returns
+`INSUFFICIENT_OPTIONS / constraint_candidates_insufficient`, even if one
+option remains. The agent adds a feasible alternative or asks about the
+requirements; it never relaxes a requirement without your instruction or
+starts an automatic candidate-generation loop. `constraint_check` reports
+mode, eligible IDs, exclusions with condition/evidence IDs, and remaining
+unknown option/condition pairs.
+
+Old states that omit `hard_constraints` retain the legacy evaluation path
+without the new evidence-backed exclusion guarantee. An explicit empty
+array uses structured mode and makes all options eligible. The engine
+checks the input contract and filtering; it cannot guarantee source
+accuracy or that a fact establishes a condition. Secret exclusion and
+recursive redaction apply to the structured evidence and revision too.
 
 ## Install
 
@@ -81,6 +176,7 @@ The skill drives `scripts/decide.py`; you can also run it directly:
 python3 skills/autarch/scripts/decide.py --state-file state.json \
   [--model jev-latest] [--auto-select 0.85] [--review 0.60] \
   [--min-gap 0.15] [--human-preference 0.70] \
+  [--sufficiency 0.60] [--blocker-confidence 0.50] \
   [--timeout 30] [--endpoint https://api.typesafe.ai]
 ```
 

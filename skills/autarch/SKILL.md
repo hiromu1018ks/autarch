@@ -34,13 +34,18 @@ Example:
 
 Write all decision material in English — `goal`, `question`,
 `known_constraints`, `environment`, `evidence`, `alternatives`, and
-`criteria` — regardless of the conversation language. Jev's documented
+`criteria`, `hard_constraints`, and `evidence_records` — regardless of the conversation language. Jev's documented
 interface and examples are English, and evaluation reliability is
 strongest there; a fixed language also keeps evaluations comparable
 across decisions. Preserve exact wording as a verbatim quote in the
 original language only when the quoting itself is the evidence, adding
 a one-line English gloss. User-facing output — the resolution report
 and any ASK_USER question — stays in the user's conversation language.
+
+Separate explicit mandatory requirements from preferences. Register every
+explicit mandatory requirement in `hard_constraints`; put preferences and
+priorities in `criteria`. If it is unclear whether a condition is mandatory,
+ask about the user's intent rather than silently promoting a preference.
 
 ### Step 3 — Generate alternatives (2–5, neutral)
 
@@ -82,7 +87,23 @@ requirements, constraints).
 
 Do not read or include .env files, credential files,
 private keys, authentication tokens, or secret stores
-as evidence.
+as evidence. Apply the same exclusion to newly discovered evidence.
+
+For each hard constraint, assess every original alternative ID. Record
+confirmed facts separately from inference in `evidence_records`, with a
+non-empty `fact`, a `source` (file and location, official documentation URL,
+or identifier of an explicit user statement), a timezone-aware RFC 3339
+`checked_at`, and `kind` of `verified` or `inference`. Recheck changing facts at decision time
+(for example prices and available features); the engine validates timestamps
+but does not open sources or enforce a fixed freshness limit.
+
+Use assessment `status` of `met`, `violated`, or `unknown`, with a
+unique list of existing `evidence_ids`. Both `met` and `violated` require
+at least one relevant `verified` record that establishes that result;
+inference alone must remain `unknown`. An unconfirmed result stays
+`unknown`, with an empty list or references to existing evidence. Never
+turn absence of evidence into `met`. Keep `known_constraints` and the
+string array `evidence` for context; they do not replace structured checks.
 
 ### Step 5 — Generate criteria
 
@@ -109,7 +130,8 @@ STATE_FILE=$(mktemp /tmp/autarch-state-XXXXXX.json)
 ```
 
 State schema (`goal`, `question`, `alternatives` required; `criteria` may
-be empty or omitted):
+be empty or omitted; include `hard_constraints` and `evidence_records`
+when mandatory requirements apply):
 
 ```json
 {
@@ -122,6 +144,23 @@ be empty or omitted):
   "criteria": ["...as defined in Step 5..."]
 }
 ```
+
+When present, `hard_constraints` and `evidence_records` must be arrays,
+not null; non-empty constraints require `evidence_records`. Each constraint
+has `id`, non-empty `description`, and `assessments` covering exactly all
+original alternative IDs. Each record has `id` and the fields in Step 4.
+Constraint IDs and evidence IDs follow the Step 3 ID rules and are unique
+within their respective arrays. See the complete runnable state example in
+[README.md](../../README.md#evidence-backed-hard-constraints).
+
+Omitting `hard_constraints` uses legacy mode. The legacy path has no evidence-backed exclusion guarantee.
+An explicit empty array uses structured mode and treats every option as
+eligible; it is appropriate only when there are no mandatory requirements.
+The engine guarantees the input contract and filtering, not source accuracy
+or that a cited fact actually proves the assessment. It evaluates a redacted
+copy and leaves the original state unchanged. Keep secrets out of IDs,
+facts, sources, and revision summaries; recursive redaction also covers the
+new fields.
 
 ### Step 7 — Run decide.py
 
@@ -148,7 +187,19 @@ failed to execute.
 stdout contains exactly one JSON object with: `decision`, `rule`,
 `selected_option`, `confidence`, `probability`, `probabilities`,
 `human_preference_probability`, `score_summary`, `evidence_sufficiency`,
-`blocker_class`, `blocker_confidence`, `reason`, `detail`, `model`.
+`blocker_class`, `blocker_confidence`, `reason`, `detail`, `model`,
+`constraint_check`.
+
+`constraint_check` reports `mode` (`legacy` or `structured`),
+`eligible_option_ids`, `excluded_options` (each with `option_id`,
+`constraint_ids`, and `evidence_ids`), and `unknown_assessments` (each with
+`option_id` and `constraint_id`). It is null for invalid input. Violated
+options are excluded; unknown conditions on non-violated options stop all
+comparison before Jev. Unknown conditions on already excluded options do
+not require investigation. Only options with all conditions `met` are
+eligible, and at least two are required for comparison. Pre-comparison
+stops have null Jev values and empty probabilities and scores; do not
+attach Jev confidence to them.
 
 `probabilities` are a probability distribution over the alternatives
 (they sum to about 1). They are NOT scores — never present them as
@@ -170,6 +221,25 @@ Same as Step 9, but state the uncertainty first in one short sentence
 
 Do NOT repeat the original technical question. Dispatch on `rule` and
 `blocker_class`:
+
+All constraint verification, evidence investigation, and material repair
+use one shared revision round. If `revision` already exists, do not
+investigate or repair and re-run again; report confirmed facts and remaining
+unknowns, then ask one deciding question. Do not delete or reset `revision`
+to gain another round.
+
+**`constraint_unverified`, blocker `facts_missing`, no `revision` —
+investigate once, then re-run.** Use `constraint_check.unknown_assessments`
+to identify the non-excluded options and conditions to verify. Check
+repository sources first, then external documentation or web search when
+needed. Update `evidence_records` and the affected `hard_constraints`
+assessments using Step 4; retain `unknown` if verification fails. Apply
+secret exclusion and recursive redaction to all new material. Set
+`"revision": {"round": 1, "action": "investigation", "summary": "..."}`
+and re-run decide.py exactly one more time. If verification reveals a
+question about the user's intent, stop investigating and ask that one
+question instead. Follow Step 12 if the re-run returns
+`PROVIDER_UNAVAILABLE`; never call Jev again.
 
 **`evidence_insufficient`, blocker `facts_missing`, no `revision` in the
 state — investigate once, then re-run.** Check repository configuration,
@@ -197,7 +267,8 @@ of detail, neutrally. Set `"revision": {"round": 1, "action":
 "material_fix", "summary": "..."}` and re-run decide.py once.
 
 **`investigation_exhausted` — the revision round is spent and the
-evidence is still insufficient.** Return to the user without another
+evidence or a hard constraint is still unverified.** Use
+`constraint_check.unknown_assessments` when present. Return to the user without another
 decide.py run: list what was confirmed (verified facts with sources)
 and what remains unverified, then ask the single deciding question as
 below.
@@ -238,7 +309,16 @@ yourself unless the user asks you to decide without Autarch.
 
 ### Step 13 — INSUFFICIENT_OPTIONS
 
-The state failed validation (see `detail`). Fix the state — usually the
+**`constraint_candidates_insufficient`** — fewer than two eligible options
+remain after hard-constraint checks. Read `constraint_check` to explain
+which options were excluded and why. Do not automatically adopt a lone
+eligible option. If a materially different candidate can meet the existing
+requirements, add it and assess it against every hard constraint before
+running Steps 6–7 again. Otherwise ask the user one question about the
+requirements. Never relax a hard constraint without the user's instruction.
+Do not automatically repeat candidate generation or run a regeneration loop.
+
+**`invalid_state`** — the state failed validation (see `detail`). Fix the state — usually the
 alternatives structure or ids — and run Steps 6–7 again. If materially
 different options cannot be constructed, tell the user why the decision
 cannot be structured and ask how to proceed.

@@ -82,3 +82,24 @@ class TestSkillMarkdown:
         assert "external documentation" in text
         assert "Never invent facts" in text
         assert "material_fix" in text
+
+    def test_hard_constraint_flow(self):
+        text = _read()
+        for term in (
+            "hard_constraints", "evidence_records", "verified", "inference",
+            "constraint_unverified", "constraint_candidates_insufficient",
+            "constraint_check", "eligible_option_ids", "excluded_options",
+            "unknown_assessments",
+        ):
+            assert term in text
+        for instruction in (
+            "every original alternative ID",
+            "inference alone must remain `unknown`",
+            "Recheck changing facts at decision time",
+            "one shared revision round",
+            "If `revision` already exists",
+            "Never relax a hard constraint without the user's instruction",
+            "Do not automatically repeat candidate generation",
+            "legacy path has no evidence-backed exclusion guarantee",
+        ):
+            assert instruction in text
