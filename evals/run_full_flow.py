@@ -54,11 +54,10 @@ def run_scenario(scenario_dir: Path, args, out_dir: Path) -> dict:
             "--model", args.agent_model,
             "--permission-mode", "acceptEdits",
             "--allowedTools", "Bash(python3:*)",
-            prompt,
         ]
         completed = subprocess.run(
             command, capture_output=True, text=True,
-            timeout=args.timeout, cwd=workdir,
+            timeout=args.timeout, cwd=workdir, input=prompt,
         )
         duration_s = round(time.perf_counter() - started, 1)
         state = _load_json(workdir / "autarch-state.json")

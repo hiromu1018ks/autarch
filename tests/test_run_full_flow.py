@@ -7,8 +7,13 @@ import run_full_flow
 
 STUB_CLAUDE = '''#!/usr/bin/env python3
 import os
+import sys
 from pathlib import Path
 
+stdin_text = sys.stdin.read()
+capture = os.environ.get("STUB_CAPTURE_DIR")
+if capture:
+    Path(capture, "stub_stdin.txt").write_text(stdin_text, encoding="utf-8")
 canned = os.environ.get("STUB_CANNED_DIR")
 if canned:
     for name in ("autarch-state.json", "autarch-resolution.json"):
@@ -165,6 +170,24 @@ def test_refuses_to_overwrite_existing_runs(tmp_path, stub_claude, canned_dir,
         "--agent-model", "stub-model", "--claude-bin", stub_claude,
     ])
     assert exit_code == 2
+
+
+def test_prompt_is_passed_via_stdin(tmp_path, stub_claude, canned_dir, monkeypatch):
+    monkeypatch.setenv("STUB_CANNED_DIR", canned_dir)
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    monkeypatch.setenv("STUB_CAPTURE_DIR", str(capture))
+    scenarios = tmp_path / "scenarios"
+    make_scenario(scenarios, "database")
+    out_dir = tmp_path / "out"
+    exit_code = run_full_flow.main([
+        "--scenarios-dir", str(scenarios), "--out-dir", str(out_dir),
+        "--agent-model", "stub-model", "--claude-bin", stub_claude,
+    ])
+    assert exit_code == 0
+    # The prompt must reach the agent via stdin, not as a trailing positional
+    # argument (variadic flags like --allowedTools swallow positionals).
+    assert "Decide storage." in (capture / "stub_stdin.txt").read_text()
 
 
 def test_dry_run_lists_scenarios(tmp_path, stub_claude, capsys):
