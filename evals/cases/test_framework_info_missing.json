@@ -1,0 +1,62 @@
+{
+  "id": "test_framework_info_missing",
+  "topic": "test_framework",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose the test framework for a new Python service",
+    "question": "Which test framework should the new service adopt?",
+    "known_constraints": ["tests must run on every push"],
+    "environment": {"language": "python"},
+    "evidence": [
+      "the repository has no tests yet",
+      "no CI configuration exists"
+    ],
+    "alternatives": [
+      {
+        "id": "pytest",
+        "name": "pytest",
+        "description": "A widely used third-party test framework with fixtures and parametrization.",
+        "advantages": ["concise test code", "large plugin ecosystem"],
+        "disadvantages": ["third-party dependency"],
+        "assumptions": []
+      },
+      {
+        "id": "stdlib_unittest",
+        "name": "unittest",
+        "description": "The standard library test framework shipped with Python.",
+        "advantages": ["no third-party dependency"],
+        "disadvantages": ["more boilerplate than pytest"],
+        "assumptions": []
+      },
+      {
+        "id": "nose2",
+        "name": "nose2",
+        "description": "A third-party framework that extends unittest with discovery and plugins.",
+        "advantages": ["test discovery included"],
+        "disadvantages": ["smaller community"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "setup_cost",
+        "name": "Setup cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

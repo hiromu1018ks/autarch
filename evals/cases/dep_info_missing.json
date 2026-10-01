@@ -1,0 +1,54 @@
+{
+  "id": "dep_info_missing",
+  "topic": "dependency",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Decide how to handle CSV processing in an internal tool",
+    "question": "Should the tool process CSV with the standard library or add a dependency?",
+    "known_constraints": ["processing must finish inside the weekly maintenance window"],
+    "environment": {"language": "python", "form": "internal script"},
+    "evidence": [
+      "the tool reads CSV exports",
+      "file sizes and row volumes are undocumented"
+    ],
+    "alternatives": [
+      {
+        "id": "stdlib_only",
+        "name": "Standard library only",
+        "description": "Use the built-in csv module for all reading and writing.",
+        "advantages": ["no new dependency", "simple to audit"],
+        "disadvantages": ["less convenient for large transformations"],
+        "assumptions": []
+      },
+      {
+        "id": "add_pandas",
+        "name": "Add pandas",
+        "description": "Introduce pandas for table processing.",
+        "advantages": ["rich data tooling", "fast bulk operations"],
+        "disadvantages": ["large dependency footprint"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "dependency_cost",
+        "name": "Dependency cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

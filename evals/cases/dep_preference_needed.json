@@ -1,0 +1,55 @@
+{
+  "id": "dep_preference_needed",
+  "topic": "dependency",
+  "situation": "preference_needed",
+  "state": {
+    "goal": "Settle the team's approach to adding a data-handling dependency",
+    "question": "Should the tool stay standard-library only or adopt a data library?",
+    "known_constraints": ["either approach must pass the same review checklist"],
+    "environment": {"language": "python", "form": "internal script"},
+    "evidence": [
+      "both approaches meet the measured performance need",
+      "no dependency policy is written down",
+      "one reviewer prefers fewer dependencies while another values library tooling"
+    ],
+    "alternatives": [
+      {
+        "id": "stdlib_only",
+        "name": "Standard library only",
+        "description": "Keep the tool free of third-party dependencies.",
+        "advantages": ["no dependency churn", "simple audits"],
+        "disadvantages": ["more hand-written code"],
+        "assumptions": []
+      },
+      {
+        "id": "add_pandas",
+        "name": "Add pandas",
+        "description": "Adopt pandas and use its tooling for present and future data work.",
+        "advantages": ["rich data tooling", "faster development for analysis tasks"],
+        "disadvantages": ["dependency to track and upgrade"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "maintainability",
+        "name": "Maintainability",
+        "weight": 0.4,
+        "rubric": ["Hard to maintain", "Neutral", "Easy to maintain"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": true
+  },
+  "derived_from": null
+}

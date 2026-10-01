@@ -1,0 +1,63 @@
+{
+  "id": "deploy_constraint_clear",
+  "topic": "deployment",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose hosting for a statically generated documentation site",
+    "question": "Where should the static documentation site be hosted?",
+    "known_constraints": ["must stay within free hosting tiers", "no server-side runtime involved"],
+    "environment": {"artifact": "static HTML"},
+    "evidence": [
+      "the site generator outputs static HTML",
+      "projected traffic is far below free-tier limits",
+      "no dynamic endpoints exist"
+    ],
+    "alternatives": [
+      {
+        "id": "static_host",
+        "name": "Static site host",
+        "description": "Serve the generated files from a hosting product built for static sites.",
+        "advantages": ["free tier fits", "no servers to run"],
+        "disadvantages": ["static content only"],
+        "assumptions": []
+      },
+      {
+        "id": "vps_self_host",
+        "name": "Self-hosted VPS",
+        "description": "Run a small virtual server and serve the files from it.",
+        "advantages": ["full control of the environment"],
+        "disadvantages": ["server upkeep for static files", "paid server"],
+        "assumptions": []
+      },
+      {
+        "id": "paas_container",
+        "name": "Container platform",
+        "description": "Package and deploy the site as a container to a managed platform.",
+        "advantages": ["familiar deploy pipeline"],
+        "disadvantages": ["runtime not needed for static files", "usually beyond free tiers"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "running_cost",
+        "name": "Running cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+    "acceptable_selections": ["static_host"],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

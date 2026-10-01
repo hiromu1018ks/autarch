@@ -1,0 +1,63 @@
+{
+  "id": "dep_constraint_clear",
+  "topic": "dependency",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Decide how to handle CSV processing in a small internal tool",
+    "question": "Should the tool process CSV with the standard library or add a dependency?",
+    "known_constraints": ["the tool must install without reaching a package registry"],
+    "environment": {"language": "python", "form": "single internal script"},
+    "evidence": [
+      "the files use plain RFC 4180 CSV",
+      "the standard library csv module covers the required reading and writing",
+      "the tool is one script with no other dependencies"
+    ],
+    "alternatives": [
+      {
+        "id": "stdlib_only",
+        "name": "Standard library only",
+        "description": "Use the built-in csv module for all reading and writing.",
+        "advantages": ["no new dependency", "installs offline"],
+        "disadvantages": ["fewer convenience features"],
+        "assumptions": []
+      },
+      {
+        "id": "add_pandas",
+        "name": "Add pandas",
+        "description": "Introduce pandas for table processing.",
+        "advantages": ["rich data tooling"],
+        "disadvantages": ["large dependency footprint"],
+        "assumptions": []
+      },
+      {
+        "id": "add_tablib",
+        "name": "Add tablib",
+        "description": "Introduce tablib as a lightweight tabular data library.",
+        "advantages": ["simple tabular API"],
+        "disadvantages": ["extra dependency for needs the stdlib covers"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "dependency_cost",
+        "name": "Dependency cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+    "acceptable_selections": ["stdlib_only"],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

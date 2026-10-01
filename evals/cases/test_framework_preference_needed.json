@@ -1,0 +1,55 @@
+{
+  "id": "test_framework_preference_needed",
+  "topic": "test_framework",
+  "situation": "preference_needed",
+  "state": {
+    "goal": "Decide the test style for a team maintaining legacy tests",
+    "question": "Should the team keep unittest style or standardize on pytest style?",
+    "known_constraints": ["tests must keep passing throughout any migration"],
+    "environment": {"language": "python"},
+    "evidence": [
+      "30 legacy unittest-style tests exist",
+      "pytest can run unittest-style tests with minimal changes",
+      "the team has not discussed style preferences"
+    ],
+    "alternatives": [
+      {
+        "id": "keep_unittest",
+        "name": "Keep unittest style",
+        "description": "Continue writing new tests in unittest style to match the legacy suite.",
+        "advantages": ["consistent with existing tests", "no migration at all"],
+        "disadvantages": ["more boilerplate in new tests"],
+        "assumptions": []
+      },
+      {
+        "id": "move_to_pytest",
+        "name": "Standardize on pytest",
+        "description": "Write new tests in pytest style and gradually convert the legacy suite.",
+        "advantages": ["concise new tests", "fixtures and parametrization"],
+        "disadvantages": ["mixed styles during the transition"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "style_consistency",
+        "name": "Style consistency",
+        "weight": 0.4,
+        "rubric": ["Mixed styles", "Mostly consistent", "Fully consistent"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": true
+  },
+  "derived_from": null
+}

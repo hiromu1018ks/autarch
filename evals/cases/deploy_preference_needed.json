@@ -1,0 +1,55 @@
+{
+  "id": "deploy_preference_needed",
+  "topic": "deployment",
+  "situation": "preference_needed",
+  "state": {
+    "goal": "Choose the deployment approach for a small team's web service",
+    "question": "Should the service run on a managed platform or a self-managed server?",
+    "known_constraints": ["monthly spend must stay within the approved budget"],
+    "environment": {"artifact": "container image"},
+    "evidence": [
+      "a managed platform and a self-managed server both fit the budget",
+      "one team member can maintain a server",
+      "no on-call rotation exists"
+    ],
+    "alternatives": [
+      {
+        "id": "paas_container",
+        "name": "Managed container platform",
+        "description": "Deploy the container to a managed platform and let it handle operations.",
+        "advantages": ["least operations effort", "no server duties"],
+        "disadvantages": ["usage-based pricing"],
+        "assumptions": []
+      },
+      {
+        "id": "vps_self_host",
+        "name": "Self-managed virtual server",
+        "description": "Run the container on a virtual server the team maintains itself.",
+        "advantages": ["fixed cost", "full control"],
+        "disadvantages": ["upkeep depends on one person"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "operations_burden",
+        "name": "Operations burden",
+        "weight": 0.4,
+        "rubric": ["High burden", "Moderate burden", "Low burden"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": true
+  },
+  "derived_from": null
+}

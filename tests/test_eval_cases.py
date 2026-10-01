@@ -65,3 +65,22 @@ def test_auth_perturbations_declare_derived_from():
 def test_auth_violating_candidate_forbids_added_option():
     perturbed = by_id()["auth_violating_candidate"]
     assert perturbed["expectations"]["forbidden_selections"] == ["api_gateway_auth"]
+
+
+def test_case_set_is_complete():
+    violations = case_schema.validate_case_set(all_cases())
+    assert violations == []
+
+
+def test_ask_cases_expect_ask_user_everywhere():
+    for case in all_cases():
+        if case["situation"] in ("info_missing", "preference_needed"):
+            assert case["expectations"]["acceptable_decisions"] == ["ASK_USER"], case["id"]
+
+
+def test_constraint_clear_cases_expect_selection():
+    for case in all_cases():
+        if case["situation"] == "constraint_clear" and not case.get("derived_from"):
+            decisions = case["expectations"]["acceptable_decisions"]
+            assert set(decisions) == {"SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"}, case["id"]
+            assert case["expectations"]["acceptable_selections"], case["id"]

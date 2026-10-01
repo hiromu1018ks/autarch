@@ -1,0 +1,54 @@
+{
+  "id": "deploy_info_missing",
+  "topic": "deployment",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose hosting for a containerized web service",
+    "question": "Where should the containerized web service be deployed?",
+    "known_constraints": ["the service must be reachable over HTTPS"],
+    "environment": {"artifact": "container image"},
+    "evidence": [
+      "the service is containerized",
+      "traffic estimates have not been gathered"
+    ],
+    "alternatives": [
+      {
+        "id": "paas_container",
+        "name": "Managed container platform",
+        "description": "Deploy the container to a managed platform that runs and scales it.",
+        "advantages": ["little operations work", "built-in HTTPS"],
+        "disadvantages": ["costs grow with usage"],
+        "assumptions": []
+      },
+      {
+        "id": "vps_self_host",
+        "name": "Self-managed virtual server",
+        "description": "Run the container on a virtual server the team maintains.",
+        "advantages": ["fixed monthly cost", "full control"],
+        "disadvantages": ["server upkeep and TLS management"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "operations_burden",
+        "name": "Operations burden",
+        "weight": 0.4,
+        "rubric": ["High burden", "Moderate burden", "Low burden"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

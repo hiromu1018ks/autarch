@@ -1,0 +1,63 @@
+{
+  "id": "test_framework_constraint_clear",
+  "topic": "test_framework",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose the test framework for extending an existing Python service",
+    "question": "Which test framework should the team use going forward?",
+    "known_constraints": ["must run in the existing CI pipeline unchanged"],
+    "environment": {"language": "python", "ci": "existing pipeline"},
+    "evidence": [
+      "the repository contains 200 tests written with pytest",
+      "CI invokes pytest directly",
+      "onboarding documentation covers pytest"
+    ],
+    "alternatives": [
+      {
+        "id": "stay_pytest",
+        "name": "Stay with pytest",
+        "description": "Keep pytest as the single test framework for new and existing tests.",
+        "advantages": ["no migration work", "matches CI and onboarding docs"],
+        "disadvantages": ["keeps a third-party dev dependency"],
+        "assumptions": []
+      },
+      {
+        "id": "stdlib_unittest",
+        "name": "Migrate to unittest",
+        "description": "Rewrite the suite onto the standard library unittest framework.",
+        "advantages": ["no third-party dependency"],
+        "disadvantages": ["large rewrite of 200 tests", "loses pytest fixtures"],
+        "assumptions": []
+      },
+      {
+        "id": "nose2",
+        "name": "Adopt nose2",
+        "description": "Move the suite onto the nose2 framework, which extends unittest.",
+        "advantages": ["test discovery included"],
+        "disadvantages": ["smaller community", "still requires rewriting the suite"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "migration_risk",
+        "name": "Migration risk",
+        "weight": 0.4,
+        "rubric": ["High risk", "Some risk", "Low risk"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+    "acceptable_selections": ["stay_pytest"],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}
