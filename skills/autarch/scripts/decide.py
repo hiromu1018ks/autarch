@@ -419,6 +419,101 @@ def validate_state(state) -> list[str]:
     return errors
 
 
+def check_constraints(state: dict) -> tuple[dict | None, dict | None, dict | None]:
+    """Validate, redact and filter a copy before any provider evaluation."""
+    def invalid(errors):
+        resolution = _empty_resolution("INSUFFICIENT_OPTIONS", "invalid_state")
+        resolution["detail"] = _redact_string("; ".join(errors))[0]
+        return None, None, resolution
+
+    errors = validate_state(state)
+    if errors:
+        return invalid(errors)
+    evaluated, _ = redact(state)
+    errors = validate_state(evaluated)
+    if errors:
+        return invalid(errors)
+
+    # Schema validity alone cannot detect a replacement by another valid ID.
+    for field in ("alternatives", "criteria", "hard_constraints", "evidence_records"):
+        original_ids = [item["id"] for item in state.get(field) or []]
+        redacted_ids = [item["id"] for item in evaluated.get(field) or []]
+        if original_ids != redacted_ids:
+            errors.append(f"{field}: ids changed during redaction")
+    for original, redacted in zip(state.get("hard_constraints", []),
+                                  evaluated.get("hard_constraints", [])):
+        original_references = {option_id: assessment["evidence_ids"]
+                               for option_id, assessment in original["assessments"].items()}
+        redacted_references = {option_id: assessment["evidence_ids"]
+                               for option_id, assessment in redacted["assessments"].items()}
+        if original_references != redacted_references:
+            errors.append("hard_constraints: assessment ids or references changed during redaction")
+
+    records = {record["id"]: record for record in evaluated.get("evidence_records", [])}
+    for constraint in evaluated.get("hard_constraints", []):
+        for assessment in constraint["assessments"].values():
+            if assessment["status"] not in ("met", "violated"):
+                continue
+            for evidence_id in assessment["evidence_ids"]:
+                record = records[evidence_id]
+                if record["kind"] == "verified" and any(
+                    not record[field].replace(REDACTED, "").strip()
+                    for field in ("fact", "source")
+                ):
+                    errors.append("evidence_records: referenced verified fact or source is redaction-only")
+    if errors:
+        return invalid(errors)
+
+    check = {
+        "mode": "structured" if "hard_constraints" in state else "legacy",
+        "eligible_option_ids": [],
+        "excluded_options": [],
+        "unknown_assessments": [],
+    }
+    constraints = evaluated.get("hard_constraints", [])
+    for alternative in evaluated["alternatives"]:
+        option_id = alternative["id"]
+        violated = [constraint for constraint in constraints
+                    if constraint["assessments"][option_id]["status"] == "violated"]
+        if violated:
+            evidence_ids = list(dict.fromkeys(
+                evidence_id for constraint in violated
+                for evidence_id in constraint["assessments"][option_id]["evidence_ids"]
+            ))
+            check["excluded_options"].append({
+                "option_id": option_id,
+                "constraint_ids": [constraint["id"] for constraint in violated],
+                "evidence_ids": evidence_ids,
+            })
+            continue
+        unknown = [{"option_id": option_id, "constraint_id": constraint["id"]}
+                   for constraint in constraints
+                   if constraint["assessments"][option_id]["status"] == "unknown"]
+        check["unknown_assessments"].extend(unknown)
+        if not unknown:
+            check["eligible_option_ids"].append(option_id)
+
+    if check["unknown_assessments"]:
+        rule = "investigation_exhausted" if state.get("revision") else "constraint_unverified"
+        resolution = _empty_resolution("ASK_USER", rule)
+        resolution["blocker_class"] = "facts_missing"
+        resolution["reason"] = "Hard-constraint compliance remains unverified."
+        return None, check, resolution
+    if len(check["eligible_option_ids"]) < 2:
+        resolution = _empty_resolution("INSUFFICIENT_OPTIONS", "constraint_candidates_insufficient")
+        resolution["reason"] = "At least two eligible alternatives are required for comparison."
+        return None, check, resolution
+
+    eligible = set(check["eligible_option_ids"])
+    evaluated["alternatives"] = [alternative for alternative in evaluated["alternatives"]
+                                 if alternative["id"] in eligible]
+    for constraint in constraints:
+        constraint["assessments"] = {option_id: assessment
+                                     for option_id, assessment in constraint["assessments"].items()
+                                     if option_id in eligible}
+    return evaluated, check, None
+
+
 def build_request(state: dict, model: str) -> dict:
     """Build the SystemOne request payload from a redacted state."""
     alternatives = state.get("alternatives", [])
@@ -759,6 +854,8 @@ def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
     question = state.get("question", "") if isinstance(state, dict) else ""
     alternatives = state.get("alternatives") if isinstance(state, dict) else None
     criteria = state.get("criteria") if isinstance(state, dict) else None
+    alternatives = alternatives if isinstance(alternatives, list) else []
+    criteria = criteria if isinstance(criteria, list) else []
     return {
         "timestamp": datetime.now(timezone.utc)
         .isoformat(timespec="seconds")
@@ -778,6 +875,7 @@ def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
         "human_preference_probability": output.get("human_preference_probability"),
         "evidence_sufficiency": output.get("evidence_sufficiency"),
         "blocker_class": output.get("blocker_class"),
+        "constraint_check": redact(output.get("constraint_check"))[0],
         "resolution": output.get("decision"),
         "model": output.get("model"),
         "latency_ms": latency_ms,
@@ -860,10 +958,11 @@ def main(argv: list[str] | None = None) -> int:
         "blocker_confidence": args.blocker_confidence,
     }
 
-    errors = validate_state(state)
-    if errors:
-        resolution = _empty_resolution("INSUFFICIENT_OPTIONS", "invalid_state")
-        output = _resolution_output(resolution, args.model, detail="; ".join(errors))
+    redacted_state, constraint_check, early_resolution = check_constraints(state)
+    if early_resolution is not None:
+        output = _resolution_output(early_resolution, args.model,
+                                    detail=early_resolution.get("detail"))
+        output["constraint_check"] = redact(constraint_check)[0]
         print(json.dumps(output, ensure_ascii=False))
         append_log(build_log_record(state, output, None))
         return 0
@@ -873,7 +972,7 @@ def main(argv: list[str] | None = None) -> int:
         api_key = os.environ.get("TYPESAFE_API_KEY", "").strip()
         if not api_key:
             raise ProviderError("TYPESAFE_API_KEY is not set")
-        redacted_state, redaction_count = redact(state)
+        _, redaction_count = redact(state)
         if redaction_count:
             print(f"redacted: {redaction_count} value(s)", file=sys.stderr)
         payload = build_request(redacted_state, args.model)
@@ -892,11 +991,13 @@ def main(argv: list[str] | None = None) -> int:
     except ProviderError as error:
         empty = _empty_resolution("PROVIDER_UNAVAILABLE", "provider_error")
         output = _resolution_output(empty, args.model, detail=str(error))
+        output["constraint_check"] = redact(constraint_check)[0]
         print(json.dumps(output, ensure_ascii=False))
         append_log(build_log_record(state, output, latency_ms))
         return 0
 
     output = _resolution_output(resolution, args.model)
+    output["constraint_check"] = redact(constraint_check)[0]
     print(json.dumps(output, ensure_ascii=False))
     append_log(build_log_record(state, output, latency_ms))
     return 0

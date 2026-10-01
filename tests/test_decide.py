@@ -1244,6 +1244,7 @@ class TestLogging:
             "resolution",
             "model",
             "latency_ms",
+            "constraint_check",
         }
         # "which one? " (11 chars) + "[REDACTED]" (10) + " " (1) = 22 chars,
         # leaving 478 of the 600 "y" characters within the 500-char cap.
@@ -1534,3 +1535,244 @@ class TestDomainAgnostic:
             "authentication",
         ):
             assert term not in source, term
+
+
+def _constraint_state(statuses=("met", "met", "violated")):
+    state = _valid_state()
+    state["alternatives"].append(
+        {"id": "option_c", "name": "Option C", "description": "Third candidate."}
+    )
+    state["evidence_records"] = [{
+        "id": "runtime_doc", "fact": "Runtime support was checked.",
+        "source": "docs/runtime.md:18", "kind": "verified",
+        "checked_at": "2026-10-01T09:00:00Z",
+    }]
+    state["hard_constraints"] = [{
+        "id": "offline", "description": "Must work offline.",
+        "assessments": {
+            option_id: {"status": status, "evidence_ids": ["runtime_doc"]}
+            for option_id, status in zip(("option_a", "option_b", "option_c"), statuses)
+        },
+    }]
+    return state
+
+
+def _run_constraint_main(state, tmp_path, monkeypatch, capsys, response=None):
+    from unittest.mock import Mock
+
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps(state), encoding="utf-8")
+    log_path = tmp_path / "decisions.jsonl"
+    monkeypatch.setattr(decide, "default_log_path", lambda: log_path)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    sender = Mock(return_value=(200, response or b"{}"))
+    monkeypatch.setattr(decide, "send_request", sender)
+    assert decide.main([f"--state-file={state_file}"]) == 0
+    output = json.loads(capsys.readouterr().out)
+    record = json.loads(log_path.read_text(encoding="utf-8"))
+    return output, record, sender
+
+
+class TestConstraintPreflight:
+    def test_filters_without_mutating_and_removes_choice_and_scores(self):
+        state = _constraint_state()
+        before = copy.deepcopy(state)
+        evaluated, check, early = decide.check_constraints(state)
+        assert state == before
+        assert early is None
+        assert check == {
+            "mode": "structured", "eligible_option_ids": ["option_a", "option_b"],
+            "excluded_options": [{"option_id": "option_c", "constraint_ids": ["offline"],
+                                  "evidence_ids": ["runtime_doc"]}],
+            "unknown_assessments": [],
+        }
+        assert [a["id"] for a in evaluated["alternatives"]] == ["option_a", "option_b"]
+        assert set(evaluated["hard_constraints"][0]["assessments"]) == {"option_a", "option_b"}
+        assert decide.validate_state(evaluated) == []
+        payload = decide.build_request(evaluated, "test-model")
+        assert set(payload["questions"]["best_option"]["criteria"]) == {"option_a", "option_b"}
+        assert {key for key in payload["questions"] if key.startswith("score__")} == {
+            "score__fit__option_a", "score__fit__option_b",
+        }
+        evaluated["evidence_records"][0]["fact"] = "changed"
+        assert state == before
+
+    @pytest.mark.parametrize("fields, mode", [
+        ({}, "legacy"), ({"evidence_records": []}, "legacy"),
+        ({"hard_constraints": []}, "structured"),
+    ])
+    def test_compatibility_mode_and_independent_copy(self, fields, mode):
+        state = _valid_state()
+        state.update(fields)
+        evaluated, check, early = decide.check_constraints(state)
+        assert evaluated == state and evaluated is not state
+        assert early is None
+        assert check == {"mode": mode, "eligible_option_ids": ["option_a", "option_b"],
+                         "excluded_options": [], "unknown_assessments": []}
+
+    @pytest.mark.parametrize("statuses, revision, decision, rule", [
+        (("violated", "violated", "violated"), False, "INSUFFICIENT_OPTIONS", "constraint_candidates_insufficient"),
+        (("met", "violated", "violated"), False, "INSUFFICIENT_OPTIONS", "constraint_candidates_insufficient"),
+        (("met", "unknown", "violated"), False, "ASK_USER", "constraint_unverified"),
+        (("unknown", "violated", "violated"), False, "ASK_USER", "constraint_unverified"),
+        (("met", "unknown", "violated"), True, "ASK_USER", "investigation_exhausted"),
+    ])
+    def test_early_stops_never_call_provider(self, statuses, revision, decision, rule,
+                                           tmp_path, monkeypatch, capsys):
+        state = _constraint_state(statuses)
+        if revision:
+            state["revision"] = {"round": 1, "action": "material_fix", "summary": "Already revised."}
+        before = copy.deepcopy(state)
+        evaluated, check, early = decide.check_constraints(state)
+        assert evaluated is None and state == before
+        assert (early["decision"], early["rule"]) == (decision, rule)
+        output, record, sender = _run_constraint_main(state, tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 0
+        assert (output["decision"], output["rule"]) == (decision, rule)
+        assert output["constraint_check"] == record["constraint_check"] == check
+        for field in ("confidence", "probability", "probabilities", "human_preference_probability",
+                      "score_summary", "evidence_sufficiency", "blocker_confidence"):
+            assert output[field] is None
+        if decision == "ASK_USER":
+            assert output["blocker_class"] == "facts_missing"
+            assert check["unknown_assessments"] == [{"option_id": "option_b" if statuses[1] == "unknown" else "option_a",
+                                                     "constraint_id": "offline"}]
+        assert record["latency_ms"] is None
+
+    def test_violation_wins_over_unknown_and_collects_multiple_reasons(self):
+        state = _constraint_state()
+        additional = copy.deepcopy(state["hard_constraints"][0])
+        additional["id"] = "platform"
+        additional["assessments"]["option_c"]["status"] = "unknown"
+        state["hard_constraints"].append(additional)
+        evaluated, check, early = decide.check_constraints(state)
+        assert early is None and len(evaluated["alternatives"]) == 2
+        assert check["unknown_assessments"] == []
+        additional["assessments"]["option_c"]["status"] = "violated"
+        _, check, _ = decide.check_constraints(state)
+        assert check["excluded_options"] == [{"option_id": "option_c", "constraint_ids": ["offline", "platform"],
+                                              "evidence_ids": ["runtime_doc"]}]
+
+    def test_main_uses_filtered_state_and_records_check(self, tmp_path, monkeypatch, capsys):
+        state = _constraint_state()
+        eligible = copy.deepcopy(state)
+        eligible["alternatives"] = eligible["alternatives"][:2]
+        output, record, sender = _run_constraint_main(
+            state, tmp_path, monkeypatch, capsys, answers_body(make_answers(eligible)))
+        assert sender.call_count == 1
+        payload = sender.call_args.args[0]
+        assert [a["id"] for a in payload["state"]["alternatives"]] == ["option_a", "option_b"]
+        assert "score__fit__option_c" not in payload["questions"]
+        assert output["decision"] == "SELECT_OPTION"
+        assert output["constraint_check"] == record["constraint_check"]
+        assert output["constraint_check"]["eligible_option_ids"] == ["option_a", "option_b"]
+
+    def test_excluded_provider_choice_is_unavailable(self, tmp_path, monkeypatch, capsys):
+        state = _constraint_state()
+        output, record, sender = _run_constraint_main(
+            state, tmp_path, monkeypatch, capsys, answers_body(make_answers(state, choice="option_c")))
+        assert sender.call_count == 1
+        assert output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["selected_option"] is None
+        assert output["constraint_check"] == record["constraint_check"]
+
+    def test_invalid_contract_stops_without_provider(self, tmp_path, monkeypatch, capsys):
+        state = _constraint_state()
+        state["hard_constraints"][0]["assessments"]["option_a"]["evidence_ids"] = ["missing"]
+        evaluated, check, early = decide.check_constraints(state)
+        assert evaluated is None and check is None and early["rule"] == "invalid_state"
+        output, record, sender = _run_constraint_main(state, tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 0
+        assert output["rule"] == "invalid_state"
+        assert output["constraint_check"] is record["constraint_check"] is None
+
+    def test_legacy_provider_failure_has_check(self, tmp_path, monkeypatch, capsys):
+        output, record, sender = _run_constraint_main(_valid_state(), tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 1 and output["decision"] == "PROVIDER_UNAVAILABLE"
+        assert output["constraint_check"] == record["constraint_check"] == {
+            "mode": "legacy", "eligible_option_ids": ["option_a", "option_b"],
+            "excluded_options": [], "unknown_assessments": [],
+        }
+
+
+class TestConstraintRedaction:
+    @pytest.mark.parametrize("change", ["sensitive_option_key", "secret_reference", "id_change", "reference_change",
+                                      "fact_only", "source_only"])
+    def test_redaction_invalidates_identity_or_verified_evidence(
+        self, change, tmp_path, monkeypatch, capsys
+    ):
+        state = _constraint_state()
+        if change == "sensitive_option_key":
+            state["alternatives"][0]["id"] = "token_candidate"
+            assessments = state["hard_constraints"][0]["assessments"]
+            assessments["token_candidate"] = assessments.pop("option_a")
+        elif change == "secret_reference":
+            state["evidence_records"][0]["id"] = "sk-abcdefgh1234"
+            for assessment in state["hard_constraints"][0]["assessments"].values():
+                assessment["evidence_ids"] = ["sk-abcdefgh1234"]
+        elif change in ("id_change", "reference_change"):
+            original_redact = decide.redact
+            def changed_identity(value):
+                redacted, count = original_redact(value)
+                if not isinstance(redacted, dict) or "hard_constraints" not in redacted:
+                    return redacted, count
+                if change == "id_change":
+                    redacted["hard_constraints"][0]["id"] = "different_constraint"
+                else:
+                    redacted["evidence_records"].append({**redacted["evidence_records"][0], "id": "other_doc"})
+                    redacted["hard_constraints"][0]["assessments"]["option_a"]["evidence_ids"] = ["other_doc"]
+                return redacted, count
+            monkeypatch.setattr(decide, "redact", changed_identity)
+        else:
+            state["evidence_records"][0]["fact" if change == "fact_only" else "source"] = "sk-abcdefgh1234"
+        assert decide.validate_state(state) == []
+        output, record, sender = _run_constraint_main(state, tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 0
+        assert output["decision"] == "INSUFFICIENT_OPTIONS" and output["rule"] == "invalid_state"
+        assert output["constraint_check"] is record["constraint_check"] is None
+        assert "sk-abcdefgh1234" not in json.dumps(output)
+        assert "sk-abcdefgh1234" not in json.dumps(record)
+
+    def test_partial_secret_redacted_in_payload_output_and_log(self, tmp_path, monkeypatch, capsys):
+        state = _constraint_state()
+        state["question"] += " uses sk-abcdefgh1234"
+        state["evidence_records"][0]["fact"] += " Token was sk-abcdefgh1234."
+        state["evidence_records"][0]["source"] += " key sk-abcdefgh1234"
+        state["hard_constraints"][0]["description"] += " key sk-abcdefgh1234"
+        eligible = copy.deepcopy(state)
+        eligible["alternatives"] = eligible["alternatives"][:2]
+        output, record, sender = _run_constraint_main(
+            state, tmp_path, monkeypatch, capsys, answers_body(make_answers(eligible)))
+        assert output["decision"] == "SELECT_OPTION" and sender.call_count == 1
+        payload = sender.call_args.args[0]
+        assert "sk-abcdefgh1234" not in json.dumps(payload)
+        assert "[REDACTED]" in payload["state"]["evidence_records"][0]["fact"]
+        assert "sk-abcdefgh1234" not in json.dumps(output)
+        assert "sk-abcdefgh1234" not in json.dumps(record)
+        assert "evidence_records" not in record
+
+    def test_assessment_metadata_secrets_do_not_change_identity(self):
+        state = _constraint_state()
+        state["hard_constraints"][0]["assessments"]["option_a"]["note"] = "uses sk-abcdefgh1234"
+        evaluated, check, early = decide.check_constraints(state)
+        assert early is None and check["eligible_option_ids"] == ["option_a", "option_b"]
+        assert evaluated["hard_constraints"][0]["assessments"]["option_a"]["note"] == "uses [REDACTED]"
+
+    @pytest.mark.parametrize("field", ["alternatives", "criteria"])
+    def test_invalid_nonarray_state_logs_and_stops(self, field, tmp_path, monkeypatch, capsys):
+        state = _constraint_state()
+        state[field] = 1
+        output, record, sender = _run_constraint_main(state, tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 0
+        assert output["rule"] == "invalid_state"
+        assert output["constraint_check"] is record["constraint_check"] is None
+
+    def test_constraint_metadata_is_recursively_redacted_in_output(self, tmp_path, monkeypatch, capsys):
+        state = _constraint_state(("met", "unknown", "violated"))
+        state["hard_constraints"][0]["id"] = "sk-abcdefgh1234"
+        output, record, sender = _run_constraint_main(state, tmp_path, monkeypatch, capsys)
+        assert sender.call_count == 0 and output["rule"] == "constraint_unverified"
+        assert "sk-abcdefgh1234" not in json.dumps(output)
+        assert output["constraint_check"] == record["constraint_check"]
+        assert output["constraint_check"]["unknown_assessments"] == [
+            {"option_id": "option_b", "constraint_id": "[REDACTED]"}]
