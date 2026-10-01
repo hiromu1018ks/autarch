@@ -56,7 +56,7 @@ merge 前の全体レビュー(opus、fresh context)は Critical 0・Important 3
 
 ## ネクストアクション
 
-2026-10-01: 必須条件の根拠付き構造化と採点前検査、独立した閾値検証の設計方針を承認済み。仕様 `docs/superpowers/specs/2026-10-01-hard-constraints-calibration-design.md` を作成し、書面レビュー待ち。次は仕様承認 → 実装計画の作成・レビュー → 実行方法の選択。実装と閾値変更は未着手。
+2026-10-01: 必須条件の根拠付き構造化と採点前検査、独立した閾値検証の設計方針を承認済み。仕様 `docs/superpowers/specs/2026-10-01-hard-constraints-calibration-design.md` は承認済み。実装計画 `docs/superpowers/plans/2026-10-01-hard-constraints-calibration.md` を作成し、計画レビューと実行方法の選択待ち。実装と閾値変更は未着手。
 
 1. **必須条件の判定(採点前の除外)**を設計・実装する。brainstorming → spec → 実装計画の流れ。現行 baseline では違反候補の誤採用が 0 件なので、効果は除外した結果の候補数の扱い(1候補以下になった場合の確認)側に出る見込み
 2. **閾値の見直し**にデータが揃った。`sufficiency` は evidence_removed で 0.80〜0.84 に分布しており、0.60 では捕捉できない。auto_select(0.85)との関係も含めて再検討する
