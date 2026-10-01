@@ -207,6 +207,182 @@ def _valid_state():
     }
 
 
+class TestValidateConstraints:
+    @pytest.fixture
+    def state(self):
+        state = _valid_state()
+        state["evidence_records"] = [
+            {
+                "id": "offline_doc",
+                "fact": "Both candidates work without network access.",
+                "source": "docs/runtime.md:18",
+                "checked_at": "2026-10-01T09:00:00Z",
+                "kind": "verified",
+            }
+        ]
+        state["hard_constraints"] = [
+            {
+                "id": "offline",
+                "description": "Must work fully offline.",
+                "assessments": {
+                    "option_a": {"status": "met", "evidence_ids": ["offline_doc"]},
+                    "option_b": {"status": "met", "evidence_ids": ["offline_doc"]},
+                },
+            }
+        ]
+        return state
+
+    def test_valid_contract_and_input_unchanged(self, state):
+        before = copy.deepcopy(state)
+        assert decide.validate_state(state) == []
+        assert state == before
+
+    def test_legacy_state_remains_valid(self):
+        assert decide.validate_state(_valid_state()) == []
+
+    @pytest.mark.parametrize("fields", [
+        {"hard_constraints": []},
+        {"evidence_records": []},
+        {"hard_constraints": [], "evidence_records": []},
+    ])
+    def test_empty_optional_arrays_are_valid(self, fields):
+        state = _valid_state()
+        state.update(fields)
+        assert decide.validate_state(state) == []
+
+    @pytest.mark.parametrize("field", ["hard_constraints", "evidence_records"])
+    @pytest.mark.parametrize("value", [None, {}, "bad", 1, True])
+    def test_present_fields_must_be_arrays(self, state, field, value):
+        state[field] = value
+        assert any(field in error for error in decide.validate_state(state))
+
+    def test_nonempty_constraints_require_evidence_records(self, state):
+        del state["evidence_records"]
+        assert any("evidence_records" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("field", ["hard_constraints", "evidence_records"])
+    @pytest.mark.parametrize("value", [None, [], "bad", 1])
+    def test_array_entries_must_be_objects(self, state, field, value):
+        state[field] = [value]
+        assert any(f"{field}[0]" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("field", ["hard_constraints", "evidence_records"])
+    def test_duplicate_ids_rejected(self, state, field):
+        state[field].append(copy.deepcopy(state[field][0]))
+        assert any(field in error and "duplicate" in error
+                   for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("field", ["hard_constraints", "evidence_records"])
+    @pytest.mark.parametrize("value", [None, [], "", "bad id", "bad__id", "x" * 65])
+    def test_ids_follow_existing_rules(self, state, field, value):
+        state[field][0]["id"] = value
+        assert any(f"{field}[0]" in error and "id" in error
+                   for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("field,key", [
+        ("hard_constraints", "description"),
+        ("evidence_records", "fact"),
+        ("evidence_records", "source"),
+    ])
+    @pytest.mark.parametrize("value", [None, "", "   ", [], 123])
+    def test_text_fields_require_nonempty_strings(self, state, field, key, value):
+        state[field][0][key] = value
+        assert any(key in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("kind", [None, "", "guess", [], {}])
+    def test_evidence_kind_must_be_known(self, state, kind):
+        state["evidence_records"][0]["kind"] = kind
+        assert any("kind" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("timestamp", [
+        None, 1790838000, "2026-02-30T00:00:00Z", "2026-10-01T09:00:00",
+        "2026-10-01", "2026-10-01 09:00:00Z", "20261001T090000Z",
+        "2026-10-01T09:00Z", "2026-10-01T09:00:00+0900",
+        "2026-10-01T09:00:00+09:99", "2026-10-01T09:00:00+24:00",
+        "2026-10-01T24:00:00Z", "2026-10-01T09:00:00Z trailing",
+    ])
+    def test_checked_at_requires_valid_rfc3339_datetime(self, state, timestamp):
+        state["evidence_records"][0]["checked_at"] = timestamp
+        assert any("checked_at" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("timestamp", [
+        "2026-10-01T09:00:00Z", "2026-10-01T09:00:00+09:00",
+        "2026-10-01T09:00:00.123Z", "2026-10-01T09:00:00-04:30",
+        "2024-02-29T00:00:00Z", "2026-10-01t09:00:00z",
+    ])
+    def test_checked_at_accepts_rfc3339_with_timezone(self, state, timestamp):
+        state["evidence_records"][0]["checked_at"] = timestamp
+        assert decide.validate_state(state) == []
+
+    @pytest.mark.parametrize("assessments", [None, [], "bad", 1])
+    def test_assessments_must_be_object(self, state, assessments):
+        state["hard_constraints"][0]["assessments"] = assessments
+        assert any("assessments" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("change", ["missing", "extra"])
+    def test_assessments_cover_exact_alternative_ids(self, state, change):
+        assessments = state["hard_constraints"][0]["assessments"]
+        if change == "missing":
+            del assessments["option_b"]
+        else:
+            assessments["option_c"] = {"status": "unknown", "evidence_ids": []}
+        assert any("assessments" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("value", [None, [], "bad", 1])
+    def test_each_assessment_must_be_object(self, state, value):
+        state["hard_constraints"][0]["assessments"]["option_a"] = value
+        assert any("option_a" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("status", [None, "", "passed", [], {}])
+    def test_status_must_be_known(self, state, status):
+        state["hard_constraints"][0]["assessments"]["option_a"]["status"] = status
+        assert any("status" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("evidence_ids", [
+        None, "offline_doc", {}, ["offline_doc", "offline_doc"],
+        [""], ["   "], [None], [[]], [123], ["missing"],
+    ])
+    def test_evidence_ids_are_unique_existing_nonempty_strings(self, state, evidence_ids):
+        assessment = state["hard_constraints"][0]["assessments"]["option_a"]
+        assessment["evidence_ids"] = evidence_ids
+        assert any("evidence_ids" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("status", ["met", "violated"])
+    @pytest.mark.parametrize("evidence_kind", ["absent", "inference"])
+    def test_assertions_require_verified_evidence(self, state, status, evidence_kind):
+        assessment = state["hard_constraints"][0]["assessments"]["option_a"]
+        assessment["status"] = status
+        if evidence_kind == "absent":
+            assessment["evidence_ids"] = []
+        else:
+            state["evidence_records"][0]["kind"] = "inference"
+        assert any("verified" in error for error in decide.validate_state(state))
+
+    @pytest.mark.parametrize("status", ["met", "violated", "unknown"])
+    def test_statuses_allow_verified_references(self, state, status):
+        state["hard_constraints"][0]["assessments"]["option_a"]["status"] = status
+        assert decide.validate_state(state) == []
+
+    @pytest.mark.parametrize("evidence_ids", [[], ["offline_doc"]])
+    def test_unknown_allows_empty_or_inferred_existing_references(self, state, evidence_ids):
+        state["evidence_records"][0]["kind"] = "inference"
+        for assessment in state["hard_constraints"][0]["assessments"].values():
+            assessment.update(status="unknown", evidence_ids=evidence_ids)
+        assert decide.validate_state(state) == []
+
+    def test_assertion_allows_inference_alongside_verified_evidence(self, state):
+        inferred = dict(state["evidence_records"][0], id="inferred_doc", kind="inference")
+        state["evidence_records"].append(inferred)
+        state["hard_constraints"][0]["assessments"]["option_a"]["evidence_ids"].append("inferred_doc")
+        assert decide.validate_state(state) == []
+
+    def test_empty_evidence_records_valid_for_unknown_assessments(self, state):
+        state["evidence_records"] = []
+        for assessment in state["hard_constraints"][0]["assessments"].values():
+            assessment.update(status="unknown", evidence_ids=[])
+        assert decide.validate_state(state) == []
+
+
 class TestValidateState:
     def test_valid_state_passes(self):
         assert decide.validate_state(_valid_state()) == []

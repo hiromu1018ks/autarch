@@ -201,6 +201,124 @@ def _validate_id(value, errors: list[str], label: str) -> None:
         errors.append(f"{label}: id must not contain '__'")
 
 
+def validate_constraint_fields(state: dict) -> list[str]:
+    """Validate optional structured evidence and hard constraints without mutation."""
+    errors: list[str] = []
+    arrays = {}
+    for field in ("evidence_records", "hard_constraints"):
+        value = state.get(field, [])
+        if not isinstance(value, list):
+            errors.append(f"{field} must be an array")
+            value = []
+        arrays[field] = value
+    if arrays["hard_constraints"] and "evidence_records" not in state:
+        errors.append("evidence_records is required when hard_constraints is non-empty")
+
+    evidence_kinds: dict[str, str] = {}
+    seen_evidence: set[str] = set()
+    timestamp_pattern = re.compile(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"
+        r"(?:\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])"
+    )
+    for index, record in enumerate(arrays["evidence_records"]):
+        label = f"evidence_records[{index}]"
+        if not isinstance(record, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        record_id = record.get("id")
+        _validate_id(record_id, errors, label)
+        if isinstance(record_id, str) and record_id:
+            if record_id in seen_evidence:
+                errors.append(f"{label}: duplicate id")
+            seen_evidence.add(record_id)
+        for field in ("fact", "source"):
+            value = record.get(field)
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"{label}: {field} must be a non-empty string")
+        kind = record.get("kind")
+        if kind not in ("verified", "inference"):
+            errors.append(f"{label}: kind must be verified or inference")
+        elif isinstance(record_id, str) and record_id:
+            evidence_kinds[record_id] = kind
+
+        checked_at = record.get("checked_at")
+        valid_timestamp = False
+        if isinstance(checked_at, str) and timestamp_pattern.fullmatch(checked_at):
+            try:
+                datetime.fromisoformat(checked_at.upper().replace("Z", "+00:00"))
+                valid_timestamp = True
+            except ValueError:
+                pass
+        if not valid_timestamp:
+            errors.append(
+                f"{label}: checked_at must be a valid timezone-aware RFC 3339 datetime"
+            )
+
+    alternatives = state.get("alternatives", [])
+    option_ids = set()
+    if isinstance(alternatives, list):
+        option_ids = {
+            alternative["id"] for alternative in alternatives
+            if isinstance(alternative, dict) and isinstance(alternative.get("id"), str)
+        }
+    seen_constraints: set[str] = set()
+    for index, constraint in enumerate(arrays["hard_constraints"]):
+        label = f"hard_constraints[{index}]"
+        if not isinstance(constraint, dict):
+            errors.append(f"{label} must be an object")
+            continue
+        constraint_id = constraint.get("id")
+        _validate_id(constraint_id, errors, label)
+        if isinstance(constraint_id, str) and constraint_id:
+            if constraint_id in seen_constraints:
+                errors.append(f"{label}: duplicate id")
+            seen_constraints.add(constraint_id)
+        description = constraint.get("description")
+        if not isinstance(description, str) or not description.strip():
+            errors.append(f"{label}: description must be a non-empty string")
+        assessments = constraint.get("assessments")
+        if not isinstance(assessments, dict):
+            errors.append(f"{label}: assessments must be an object")
+            continue
+        if set(assessments) != option_ids:
+            errors.append(f"{label}: assessments must cover exactly the alternative ids")
+        for option_id, assessment in assessments.items():
+            assessment_label = f"{label}.assessments[{option_id}]"
+            if not isinstance(assessment, dict):
+                errors.append(f"{assessment_label} must be an object")
+                continue
+            status = assessment.get("status")
+            if status not in ("met", "violated", "unknown"):
+                errors.append(f"{assessment_label}: status must be met, violated, or unknown")
+            evidence_ids = assessment.get("evidence_ids")
+            if not isinstance(evidence_ids, list):
+                errors.append(f"{assessment_label}: evidence_ids must be an array")
+                continue
+            seen_references: set[str] = set()
+            has_verified = False
+            for evidence_id in evidence_ids:
+                if not isinstance(evidence_id, str) or not evidence_id.strip():
+                    errors.append(
+                        f"{assessment_label}: evidence_ids must contain non-empty strings"
+                    )
+                    continue
+                if evidence_id in seen_references:
+                    errors.append(f"{assessment_label}: evidence_ids must not contain duplicates")
+                seen_references.add(evidence_id)
+                if evidence_id not in seen_evidence:
+                    errors.append(
+                        f"{assessment_label}: evidence_ids contains unknown id {evidence_id!r}"
+                    )
+                if evidence_kinds.get(evidence_id) == "verified":
+                    has_verified = True
+            if status in ("met", "violated") and not has_verified:
+                errors.append(
+                    f"{assessment_label}: {status} requires at least one verified "
+                    "evidence_ids reference"
+                )
+    return errors
+
+
 def validate_state(state) -> list[str]:
     """Validate a decision state. Returns a list of violations (empty = valid)."""
     errors: list[str] = []
@@ -297,6 +415,7 @@ def validate_state(state) -> list[str]:
                     f"{REVISION_SUMMARY_LIMIT} characters"
                 )
 
+    errors.extend(validate_constraint_fields(state))
     return errors
 
 
