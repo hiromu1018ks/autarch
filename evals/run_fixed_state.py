@@ -46,7 +46,10 @@ def run_once(case, args, state_dir, state=None, phase=None):
         "--human-preference", str(args.human_preference),
         "--sufficiency", str(args.sufficiency),
         "--blocker-confidence", str(args.blocker_confidence),
+        "--gate-order", args.gate_order,
     ]
+    if args.capture_evaluation:
+        command.append("--capture-evaluation")
     started = time.perf_counter()
     completed = subprocess.run(
         command, capture_output=True, text=True, timeout=args.timeout
@@ -113,6 +116,9 @@ def main(argv=None) -> int:
     parser.add_argument("--human-preference", type=float, default=0.70)
     parser.add_argument("--sufficiency", type=float, default=0.60)
     parser.add_argument("--blocker-confidence", type=float, default=0.50)
+    parser.add_argument("--gate-order", choices=("human_first", "evidence_first"),
+                        default="human_first")
+    parser.add_argument("--capture-evaluation", action="store_true")
     parser.add_argument("--loop-cases-dir", default=None,
                         help="directory of two-phase loop cases to run additionally")
     parser.add_argument("--dry-run", action="store_true")
@@ -207,6 +213,8 @@ def main(argv=None) -> int:
     environment = {
         "runner": "run_fixed_state.py",
         "model": args.model,
+        "gate_order": args.gate_order,
+        "capture_evaluation": args.capture_evaluation,
         "thresholds": {
             "auto_select": args.auto_select,
             "review": args.review,

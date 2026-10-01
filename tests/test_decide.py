@@ -1245,6 +1245,7 @@ class TestLogging:
             "model",
             "latency_ms",
             "constraint_check",
+            "evaluation_signals",
         }
         # "which one? " (11 chars) + "[REDACTED]" (10) + " " (1) = 22 chars,
         # leaving 478 of the 600 "y" characters within the 500-char cap.
@@ -1776,3 +1777,106 @@ class TestConstraintRedaction:
         assert output["constraint_check"] == record["constraint_check"]
         assert output["constraint_check"]["unknown_assessments"] == [
             {"option_id": "option_b", "constraint_id": "[REDACTED]"}]
+
+
+class TestEvaluationCapture:
+    def test_success_signals_preserved_when_gate_does_not_fire(self):
+        state = _valid_state()
+        parsed = decide.parse_answers(answers_body(make_answers(
+            state, blocker="material_bias", blocker_confidence=0.321987)), state)
+        output = decide.resolve(state, parsed, _thresholds())
+        assert output["decision"] == "SELECT_OPTION"
+        assert output["blocker_class"] is None
+        assert output["blocker_confidence"] is None
+        assert output["evaluation_signals"] == {
+            "blocker_class": "material_bias", "blocker_confidence": 0.321987,
+        }
+        assert output["evaluation_snapshot"] is None
+
+    def test_gate_order_and_default(self):
+        state = _valid_state()
+        parsed = decide.parse_answers(answers_body(make_answers(
+            state, noul=0.9, sufficiency=0.2)), state)
+        assert decide.resolve(state, parsed, _thresholds())["rule"] == "human_preference"
+        assert decide.resolve(state, parsed, _thresholds(),
+                              gate_order="human_first")["rule"] == "human_preference"
+        assert decide.resolve(state, parsed, _thresholds(),
+                              gate_order="evidence_first")["rule"] == "evidence_insufficient"
+        with pytest.raises(ValueError, match="gate_order"):
+            decide.resolve(state, parsed, _thresholds(), gate_order="unknown")
+
+    @pytest.mark.parametrize("capture", [False, True])
+    def test_main_captures_only_validated_unrounded_values(
+        self, capture, tmp_path, monkeypatch, capsys
+    ):
+        state = _constraint_state()
+        evaluated, _, _ = decide.check_constraints(state)
+        answers = make_answers(evaluated, blocker_confidence=0.432198765)
+        answers["score__fit__option_a"]["score"] = 1.23456789
+        answers["score__fit__option_a"]["note"] = "sk-secretabcdefgh"
+        answers["unused"] = {"secret": "sk-secretabcdefgh"}
+        state_file = tmp_path / "state.json"
+        state_file.write_text(json.dumps(state))
+        log_path = tmp_path / "log.jsonl"
+        monkeypatch.setattr(decide, "default_log_path", lambda: log_path)
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        monkeypatch.setattr(decide, "send_request", lambda *args: (200, answers_body(answers)))
+        args = ["--state-file", str(state_file), "--gate-order", "evidence_first"]
+        if capture:
+            args.append("--capture-evaluation")
+        assert decide.main(args) == 0
+        output = json.loads(capsys.readouterr().out)
+        record = json.loads(log_path.read_text())
+        assert output["evaluation_signals"] == record["evaluation_signals"] == {
+            "blocker_class": "facts_missing", "blocker_confidence": 0.432198765,
+        }
+        assert "evaluation_snapshot" not in record
+        if capture:
+            snapshot = output["evaluation_snapshot"]
+            assert set(snapshot) == {"schema_version", "parsed", "thresholds", "gate_order",
+                                     "evaluated_option_ids"}
+            assert snapshot["schema_version"] == 1
+            assert snapshot["gate_order"] == "evidence_first"
+            assert snapshot["thresholds"] == _thresholds()
+            assert snapshot["evaluated_option_ids"] == ["option_a", "option_b"]
+            assert snapshot["parsed"]["scores"]["fit"]["option_a"] == 1.23456789
+            assert output["score_summary"]["option_a"]["fit"] == 0.6173
+            assert "unused" not in snapshot["parsed"]
+            from calibrate_thresholds import replay_resolution
+            replayed = replay_resolution(state, snapshot, _thresholds(), "evidence_first")
+            for field in ("decision", "rule", "selected_option"):
+                assert replayed[field] == output[field]
+            assert "sk-secretabcdefgh" not in json.dumps(output)
+        else:
+            assert output["evaluation_snapshot"] is None
+
+    @pytest.mark.parametrize("mode", ["early", "invalid", "provider"])
+    def test_non_evaluated_results_have_null_signals_and_snapshot(
+        self, mode, tmp_path, monkeypatch, capsys
+    ):
+        state = _constraint_state(("met", "unknown", "violated"))
+        if mode == "invalid":
+            state["goal"] = ""
+        elif mode == "provider":
+            state = _valid_state()
+        state_file = tmp_path / "state.json"
+        state_file.write_text(json.dumps(state))
+        monkeypatch.setattr(decide, "default_log_path", lambda: tmp_path / "log.jsonl")
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        assert decide.main(["--state-file", str(state_file), "--capture-evaluation"]) == 0
+        output = json.loads(capsys.readouterr().out)
+        assert output["evaluation_signals"] is None
+        assert output["evaluation_snapshot"] is None
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "1.1", "-0.1"])
+def test_capture_rejects_invalid_threshold_settings(value, tmp_path, monkeypatch):
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps(_valid_state()))
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    monkeypatch.setattr(decide, "send_request", lambda *args: (400, b""))
+    monkeypatch.setattr(decide, "default_log_path", lambda: tmp_path / "log.jsonl")
+    with pytest.raises(SystemExit) as error:
+        decide.main(["--state-file", str(state_file), "--capture-evaluation",
+                     f"--sufficiency={value}"])
+    assert error.value.code == 2

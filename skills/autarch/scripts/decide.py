@@ -7,6 +7,7 @@ module knows about decisions, not about any particular field.
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -98,6 +99,7 @@ DEFAULT_HUMAN_PREFERENCE = 0.70
 DEFAULT_SUFFICIENCY = 0.60
 DEFAULT_BLOCKER_CONFIDENCE = 0.50
 DEFAULT_TIMEOUT = 30
+GATE_ORDERS = ("human_first", "evidence_first")
 
 REVISION_ACTIONS = ("investigation", "material_fix")
 REVISION_SUMMARY_LIMIT = 500
@@ -568,6 +570,7 @@ def parse_answers(body: bytes, state: dict) -> dict:
         raise ProviderError(
             f"response is not valid JSON ({type(error).__name__})"
         ) from None
+    document, _ = redact(document)
     answers = document.get("answers") if isinstance(document, dict) else None
     if not isinstance(answers, dict):
         raise ProviderError("response has no answers object")
@@ -683,7 +686,7 @@ def parse_answers(body: bytes, state: dict) -> dict:
     }
 
 
-def compute_score_summary(state: dict, parsed: dict) -> dict:
+def compute_score_summary(state: dict, parsed: dict, *, rounded: bool = True) -> dict:
     """Compute per-option normalized criterion scores and weighted composite."""
     criteria = state.get("criteria") or []
     if not criteria:
@@ -704,15 +707,18 @@ def compute_score_summary(state: dict, parsed: dict) -> dict:
             criterion_id = criterion["id"]
             expected = parsed["scores"][criterion_id][option_id]
             normalized = expected / (len(criterion["rubric"]) - 1)
-            entry[criterion_id] = round(normalized, 4)
+            entry[criterion_id] = round(normalized, 4) if rounded else normalized
             composite += weights[criterion_id] * normalized
-        entry["composite"] = round(composite / total_weight, 4)
+        composite /= total_weight
+        entry["composite"] = round(composite, 4) if rounded else composite
         summary[option_id] = entry
     return summary
 
 
-def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
+def resolve(state: dict, parsed: dict, thresholds: dict, *, gate_order="human_first") -> dict:
     """Apply the deterministic resolution policy (spec section 8)."""
+    if gate_order not in GATE_ORDERS:
+        raise ValueError("gate_order must be human_first or evidence_first")
     probabilities = parsed["probabilities"]
     confidence = parsed["confidence"]
     human_preference = parsed["human_preference"]
@@ -731,10 +737,20 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
         "evidence_sufficiency": parsed["evidence_sufficiency"],
         "blocker_class": None,
         "blocker_confidence": None,
+        "evaluation_signals": {
+            "blocker_class": parsed["blocker_class"],
+            "blocker_confidence": parsed["blocker_confidence"],
+        },
+        "evaluation_snapshot": None,
         "reason": "",
     }
 
-    if human_preference >= thresholds["human_preference"]:
+    human_gate = human_preference >= thresholds["human_preference"]
+    gate_fires = (
+        parsed["evidence_sufficiency"] < thresholds["sufficiency"]
+        and parsed["blocker_confidence"] >= thresholds["blocker_confidence"]
+    )
+    if human_gate and (gate_order == "human_first" or not gate_fires):
         resolution["decision"] = "ASK_USER"
         resolution["rule"] = "human_preference"
         resolution["reason"] = (
@@ -743,10 +759,6 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
         )
         return resolution
 
-    gate_fires = (
-        parsed["evidence_sufficiency"] < thresholds["sufficiency"]
-        and parsed["blocker_confidence"] >= thresholds["blocker_confidence"]
-    )
     if gate_fires:
         blocker = parsed["blocker_class"]
         resolution["blocker_class"] = blocker
@@ -775,7 +787,7 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
     if has_criteria:
         composites = {
             option_id: entry["composite"]
-            for option_id, entry in score_summary.items()
+            for option_id, entry in compute_score_summary(state, parsed, rounded=False).items()
         }
         best = max(composites.values())
         score_winners = [
@@ -875,6 +887,7 @@ def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
         "human_preference_probability": output.get("human_preference_probability"),
         "evidence_sufficiency": output.get("evidence_sufficiency"),
         "blocker_class": output.get("blocker_class"),
+        "evaluation_signals": redact(output.get("evaluation_signals"))[0],
         "constraint_check": redact(output.get("constraint_check"))[0],
         "resolution": output.get("decision"),
         "model": output.get("model"),
@@ -895,6 +908,8 @@ def _empty_resolution(decision: str, rule: str) -> dict:
         "evidence_sufficiency": None,
         "blocker_class": None,
         "blocker_confidence": None,
+        "evaluation_signals": None,
+        "evaluation_snapshot": None,
         "reason": "",
     }
 
@@ -912,6 +927,13 @@ def _reject_json_constant(name: str):
     raise ValueError(f"non-finite constant {name} is not allowed")
 
 
+def _threshold_argument(value: str) -> float:
+    try:
+        return _require_number(float(value), 0.0, 1.0, "threshold")
+    except (ValueError, ProviderError) as error:
+        raise argparse.ArgumentTypeError(str(error)) from None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="decide.py",
@@ -919,18 +941,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--state-file", required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--auto-select", type=float, default=DEFAULT_AUTO_SELECT)
-    parser.add_argument("--review", type=float, default=DEFAULT_REVIEW)
-    parser.add_argument("--min-gap", type=float, default=DEFAULT_MIN_GAP)
+    parser.add_argument("--auto-select", type=_threshold_argument, default=DEFAULT_AUTO_SELECT)
+    parser.add_argument("--review", type=_threshold_argument, default=DEFAULT_REVIEW)
+    parser.add_argument("--min-gap", type=_threshold_argument, default=DEFAULT_MIN_GAP)
     parser.add_argument(
-        "--human-preference", type=float, default=DEFAULT_HUMAN_PREFERENCE
+        "--human-preference", type=_threshold_argument, default=DEFAULT_HUMAN_PREFERENCE
     )
-    parser.add_argument("--sufficiency", type=float, default=DEFAULT_SUFFICIENCY)
+    parser.add_argument("--sufficiency", type=_threshold_argument, default=DEFAULT_SUFFICIENCY)
     parser.add_argument(
-        "--blocker-confidence", type=float, default=DEFAULT_BLOCKER_CONFIDENCE
+        "--blocker-confidence", type=_threshold_argument, default=DEFAULT_BLOCKER_CONFIDENCE
     )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
+    parser.add_argument("--gate-order", choices=GATE_ORDERS, default="human_first")
+    parser.add_argument("--capture-evaluation", action="store_true")
     args = parser.parse_args(argv)
 
     try:
@@ -987,7 +1011,15 @@ def main(argv: list[str] | None = None) -> int:
         if not 200 <= status < 300:
             raise ProviderError(f"HTTP {status}")
         parsed = parse_answers(body, redacted_state)
-        resolution = resolve(redacted_state, parsed, thresholds)
+        resolution = resolve(redacted_state, parsed, thresholds, gate_order=args.gate_order)
+        if args.capture_evaluation:
+            resolution["evaluation_snapshot"] = {
+                "schema_version": 1,
+                "parsed": copy.deepcopy(parsed),
+                "thresholds": dict(thresholds),
+                "gate_order": args.gate_order,
+                "evaluated_option_ids": [a["id"] for a in redacted_state["alternatives"]],
+            }
     except ProviderError as error:
         empty = _empty_resolution("PROVIDER_UNAVAILABLE", "provider_error")
         output = _resolution_output(empty, args.model, detail=str(error))

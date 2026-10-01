@@ -280,3 +280,29 @@ def test_dry_run_counts_loop_phases(tmp_path, loop_stub, cases_dir,
     assert exit_code == 0
     assert plan["loop_cases"] == ["db_loop_resolvable"]
     assert plan["total_api_calls"] == 2 * (2 + 2)
+
+
+@pytest.mark.parametrize("capture, order", [(False, "human_first"), (True, "evidence_first")])
+def test_evaluation_settings_reach_engine_and_environment(
+    capture, order, tmp_path, cases_dir, monkeypatch
+):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    script = tmp_path / "settings_decide.py"
+    script.write_text(STUB.replace(
+        '"selected_option": state["alternatives"][0]["id"], "confidence": 0.9',
+        '\n"selected_option": state["alternatives"][0]["id"], "confidence": 0.9, '
+        '"gate_order": sys.argv[sys.argv.index("--gate-order") + 1], '
+        '"captured": "--capture-evaluation" in sys.argv'))
+    out_dir = tmp_path / "out"
+    args = ["--cases-dir", str(cases_dir), "--decide-script", str(script),
+            "--out-dir", str(out_dir), "--runs", "1", "--allow-partial-set", "--interval", "0"]
+    if capture:
+        args.extend(["--capture-evaluation", "--gate-order", order])
+    assert run_fixed_state.main(args) == 0
+    environment = json.loads((out_dir / "environment.json").read_text())
+    assert environment["capture_evaluation"] is capture
+    assert environment["gate_order"] == order
+    for line in (out_dir / "fixed_state_runs.jsonl").read_text().splitlines():
+        resolution = json.loads(line)["resolution"]
+        assert resolution["gate_order"] == order
+        assert resolution["captured"] is capture
