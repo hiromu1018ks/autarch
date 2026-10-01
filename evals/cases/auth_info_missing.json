@@ -1,0 +1,62 @@
+{
+  "id": "auth_info_missing",
+  "topic": "authentication",
+  "situation": "info_missing",
+  "state": {
+    "goal": "Choose the authentication state strategy for the web app",
+    "question": "Which authentication state strategy fits the web app?",
+    "known_constraints": ["users must stay signed in across restarts"],
+    "environment": {"form": "web app"},
+    "evidence": [
+      "a previous version of the app exists but its session storage is undocumented",
+      "requirements do not mention any non-browser clients"
+    ],
+    "alternatives": [
+      {
+        "id": "session_cookie",
+        "name": "Session cookie",
+        "description": "Server-side session state keyed by a signed cookie sent by the browser.",
+        "advantages": ["simple operational model", "revocation by deleting server state"],
+        "disadvantages": ["needs session storage on the server"],
+        "assumptions": []
+      },
+      {
+        "id": "jwt_stateless",
+        "name": "Stateless JWT",
+        "description": "Cryptographic tokens carrying claims, validated without server-side session state.",
+        "advantages": ["no server-side session store", "portable to other client types"],
+        "disadvantages": ["token revocation is harder", "more moving parts than cookies"],
+        "assumptions": []
+      },
+      {
+        "id": "external_idp",
+        "name": "External identity provider",
+        "description": "Delegate sign-in to a hosted identity service and consume its tokens.",
+        "advantages": ["outsources credential handling", "ready-made login UI"],
+        "disadvantages": ["adds an external runtime dependency", "more setup for an internal app"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "implementation_cost",
+        "name": "Implementation cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": null
+}

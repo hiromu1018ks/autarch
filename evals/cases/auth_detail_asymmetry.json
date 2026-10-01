@@ -1,0 +1,66 @@
+{
+  "id": "auth_detail_asymmetry",
+  "topic": "authentication",
+  "situation": "constraint_clear",
+  "state": {
+    "goal": "Choose the authentication state strategy for a server-rendered web app",
+    "question": "Which authentication state strategy best fits this same-origin web app?",
+    "known_constraints": [
+      "single first-party web client served from the same origin",
+      "no external API consumers"
+    ],
+    "environment": {"form": "server-rendered web app"},
+    "evidence": [
+      "the app is served from one origin by its own web server",
+      "the framework provides signed-cookie session support",
+      "no mobile or third-party clients exist"
+    ],
+    "alternatives": [
+      {
+        "id": "session_cookie",
+        "name": "Session cookie",
+        "description": "Server-side session state keyed by a signed cookie sent by the browser.",
+        "advantages": ["simple with the existing framework", "natural for same-origin browsers"],
+        "disadvantages": ["needs session storage on the server"],
+        "assumptions": []
+      },
+      {
+        "id": "jwt_stateless",
+        "name": "Stateless JWT",
+        "description": "Cryptographic tokens carrying signed claims, validated without server-side session state. They support stateless horizontal scaling, can carry roles and expiry inline, and are widely used across mobile applications and external APIs. Refresh-token flows add complexity that teams must design and operate.",
+        "advantages": ["no server-side session store", "portable to other client types"],
+        "disadvantages": ["token revocation is harder", "more moving parts than cookies"],
+        "assumptions": []
+      },
+      {
+        "id": "external_idp",
+        "name": "External identity provider",
+        "description": "Delegate sign-in to a hosted identity service and consume its tokens.",
+        "advantages": ["outsources credential handling", "ready-made login UI"],
+        "disadvantages": ["adds an external runtime dependency", "more setup for an internal app"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "implementation_cost",
+        "name": "Implementation cost",
+        "weight": 0.4,
+        "rubric": ["High cost", "Moderate cost", "Low cost"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+    "acceptable_selections": ["session_cookie"],
+    "forbidden_selections": [],
+    "requires_human_preference": false
+  },
+  "derived_from": {"base": "auth_constraint_clear", "perturbation": "detail_asymmetry"}
+}

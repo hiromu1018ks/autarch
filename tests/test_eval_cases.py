@@ -44,3 +44,24 @@ def test_db_violating_candidate_forbids_added_option():
     assert perturbed["expectations"]["forbidden_selections"] == ["managed_postgres"]
     added = [a["id"] for a in perturbed["state"]["alternatives"] if a["id"] == "managed_postgres"]
     assert added == ["managed_postgres"]
+
+
+def test_authentication_base_cases():
+    cases = by_id()
+    assert cases["auth_constraint_clear"]["expectations"]["acceptable_selections"] == ["session_cookie"]
+    assert cases["auth_info_missing"]["expectations"]["acceptable_decisions"] == ["ASK_USER"]
+    assert cases["auth_preference_needed"]["expectations"]["acceptable_decisions"] == ["ASK_USER"]
+    assert cases["auth_preference_needed"]["expectations"]["requires_human_preference"] is True
+
+
+def test_auth_perturbations_declare_derived_from():
+    cases = by_id()
+    for perturbation in ("reorder", "detail_asymmetry", "evidence_removed",
+                         "violating_candidate"):
+        derived = cases[f"auth_{perturbation}"]["derived_from"]
+        assert derived == {"base": "auth_constraint_clear", "perturbation": perturbation}
+
+
+def test_auth_violating_candidate_forbids_added_option():
+    perturbed = by_id()["auth_violating_candidate"]
+    assert perturbed["expectations"]["forbidden_selections"] == ["api_gateway_auth"]

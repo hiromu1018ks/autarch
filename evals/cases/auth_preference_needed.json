@@ -1,0 +1,55 @@
+{
+  "id": "auth_preference_needed",
+  "topic": "authentication",
+  "situation": "preference_needed",
+  "state": {
+    "goal": "Choose the authentication state strategy for the web app's future",
+    "question": "Which authentication state strategy should the web app adopt?",
+    "known_constraints": ["the strategy must not block future client types"],
+    "environment": {"form": "web app"},
+    "evidence": [
+      "the app is same-origin today",
+      "the roadmap mentions a possible mobile app without commitment",
+      "both candidate strategies work for the current app"
+    ],
+    "alternatives": [
+      {
+        "id": "session_cookie",
+        "name": "Session cookie",
+        "description": "Server-side session state keyed by a signed cookie; simplest for the same-origin app today.",
+        "advantages": ["simple with the existing framework", "easy revocation"],
+        "disadvantages": ["less natural for non-browser clients later"],
+        "assumptions": []
+      },
+      {
+        "id": "jwt_stateless",
+        "name": "Stateless JWT",
+        "description": "Cryptographic tokens carrying claims; ready for mobile or API clients if they come.",
+        "advantages": ["portable to other client types", "no server session store"],
+        "disadvantages": ["more moving parts than cookies", "harder revocation"],
+        "assumptions": []
+      }
+    ],
+    "criteria": [
+      {
+        "id": "requirement_fit",
+        "name": "Requirement fit",
+        "weight": 0.6,
+        "rubric": ["Poor fit", "Acceptable fit", "Good fit", "Excellent fit"]
+      },
+      {
+        "id": "future_flexibility",
+        "name": "Future flexibility",
+        "weight": 0.4,
+        "rubric": ["Blocks future clients", "Neutral", "Ready for future clients"]
+      }
+    ]
+  },
+  "expectations": {
+    "acceptable_decisions": ["ASK_USER"],
+    "acceptable_selections": [],
+    "forbidden_selections": [],
+    "requires_human_preference": true
+  },
+  "derived_from": null
+}
