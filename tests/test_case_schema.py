@@ -1,6 +1,9 @@
 import json
 
+import pytest
+
 import case_schema
+import decide
 
 
 def make_alternative(option_id):
@@ -171,3 +174,137 @@ def test_validate_case_set_rejects_non_permuted_reorder():
         if case["id"] == "database_reorder":
             case["state"]["alternatives"] = [dict(a) for a in base["state"]["alternatives"]]
     assert any("reorder" in e for e in case_schema.validate_case_set(cases))
+
+
+def valid_loop_case():
+    return {
+        "id": "db_loop_resolvable",
+        "topic": "database",
+        "situation": "loop_resolvable",
+        "state": {
+            "goal": "Choose a storage engine",
+            "question": "Which storage approach best fits?",
+            "known_constraints": [],
+            "environment": {},
+            "evidence": ["records are short structured notes"],
+            "alternatives": [
+                {"id": "sqlite", "name": "SQLite",
+                 "description": "An embedded single-file database."},
+                {"id": "postgres", "name": "PostgreSQL",
+                 "description": "A client-server relational database."},
+            ],
+            "criteria": [],
+        },
+        "investigation": {
+            "injected_evidence": [
+                "the app runs as a single local CLI tool with no server component"
+            ],
+            "phase1": {"rule": "evidence_insufficient",
+                       "blocker_class": "facts_missing"},
+            "phase2": {
+                "acceptable_decisions": ["SELECT_OPTION",
+                                         "SELECT_OPTION_WITH_CAUTION"],
+                "acceptable_selections": ["sqlite"],
+                "forbidden_selections": [],
+            },
+        },
+        "derived_from": None,
+    }
+
+
+class TestValidateLoopCase:
+    def test_valid_case_passes(self):
+        assert case_schema.validate_loop_case(valid_loop_case()) == []
+
+    def test_situation_must_be_loop_resolvable(self):
+        case = valid_loop_case()
+        case["situation"] = "info_missing"
+        assert any("situation" in e for e in case_schema.validate_loop_case(case))
+
+    def test_state_must_not_include_revision(self):
+        case = valid_loop_case()
+        case["state"]["revision"] = {"round": 1, "action": "investigation",
+                                     "summary": "pre-run"}
+        assert any("revision" in e for e in case_schema.validate_loop_case(case))
+
+    def test_phase1_rule_must_be_evidence_insufficient(self):
+        case = valid_loop_case()
+        case["investigation"]["phase1"]["rule"] = "low_confidence"
+        assert any("phase1" in e for e in case_schema.validate_loop_case(case))
+
+    def test_phase1_blocker_must_be_known(self):
+        case = valid_loop_case()
+        case["investigation"]["phase1"]["blocker_class"] = "mood_unknown"
+        assert any("phase1" in e for e in case_schema.validate_loop_case(case))
+
+    def test_phase2_must_include_a_selection_decision(self):
+        case = valid_loop_case()
+        case["investigation"]["phase2"] = {
+            "acceptable_decisions": ["ASK_USER"],
+            "acceptable_selections": [],
+            "forbidden_selections": [],
+        }
+        assert any("phase2.acceptable_decisions" in e
+                   for e in case_schema.validate_loop_case(case))
+
+    def test_phase2_selections_reference_unknown_ids_rejected(self):
+        case = valid_loop_case()
+        case["investigation"]["phase2"]["acceptable_selections"] = ["redis"]
+        assert any("unknown alternative ids" in e
+                   for e in case_schema.validate_loop_case(case))
+
+    def test_injected_evidence_must_be_non_empty_strings(self):
+        case = valid_loop_case()
+        case["investigation"]["injected_evidence"] = ["  "]
+        assert any("injected_evidence" in e
+                   for e in case_schema.validate_loop_case(case))
+
+    def test_derived_from_must_be_null(self):
+        case = valid_loop_case()
+        case["derived_from"] = {"base": "db_constraint_clear",
+                                "perturbation": "reorder"}
+        assert any("derived_from" in e
+                   for e in case_schema.validate_loop_case(case))
+
+
+class TestLoadLoopCases:
+    def test_loads_valid_directory(self, tmp_path):
+        (tmp_path / "a.json").write_text(json.dumps(valid_loop_case()),
+                                         encoding="utf-8")
+        cases = case_schema.load_loop_cases(tmp_path)
+        assert [c["id"] for c in cases] == ["db_loop_resolvable"]
+
+    def test_invalid_file_raises(self, tmp_path):
+        case = valid_loop_case()
+        case["investigation"].pop("phase2")
+        (tmp_path / "a.json").write_text(json.dumps(case), encoding="utf-8")
+        with pytest.raises(case_schema.CaseError):
+            case_schema.load_loop_cases(tmp_path)
+
+    def test_duplicate_ids_raise(self, tmp_path):
+        payload = json.dumps(valid_loop_case())
+        (tmp_path / "a.json").write_text(payload, encoding="utf-8")
+        (tmp_path / "b.json").write_text(payload, encoding="utf-8")
+        with pytest.raises(case_schema.CaseError):
+            case_schema.load_loop_cases(tmp_path)
+
+
+class TestLoopPhase2State:
+    def test_appends_evidence_and_sets_revision(self):
+        case = valid_loop_case()
+        snapshot = json.loads(json.dumps(case))
+        state = case_schema.loop_phase2_state(case)
+        assert state["evidence"] == (
+            case["state"]["evidence"]
+            + case["investigation"]["injected_evidence"]
+        )
+        assert state["revision"] == {
+            "round": 1,
+            "action": "investigation",
+            "summary": "injected by eval runner",
+        }
+        assert case == snapshot  # input not mutated
+
+    def test_phase2_state_passes_engine_validation(self):
+        state = case_schema.loop_phase2_state(valid_loop_case())
+        assert decide.validate_state(state) == []

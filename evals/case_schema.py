@@ -1,5 +1,6 @@
 """Loading and validation for Autarch evaluation cases and scenario expectations."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -8,6 +9,14 @@ PERTURBATIONS = ("reorder", "detail_asymmetry", "evidence_removed", "violating_c
 TOPICS = ("database", "authentication", "test_framework", "dependency", "deployment")
 DECISIONS = ("SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION", "ASK_USER")
 PERTURBED_TOPICS = ("database", "authentication")
+
+LOOP_SITUATION = "loop_resolvable"
+BLOCKER_CLASSES = (
+    "user_preference_unknown",
+    "facts_missing",
+    "material_bias",
+    "balanced_tie",
+)
 
 
 class CaseError(Exception):
@@ -115,6 +124,104 @@ def validate_scenario_expectations(exp):
     if preference is not None and not isinstance(preference, bool):
         errors.append("requires_human_preference must be a boolean when present")
     return errors
+
+
+def validate_loop_case(case):
+    """Validate one two-phase loop case. Returns violations (empty = valid)."""
+    if not isinstance(case, dict):
+        return ["case must be a JSON object"]
+    errors = []
+    if not isinstance(case.get("id"), str) or not case["id"]:
+        errors.append("id must be a non-empty string")
+    if case.get("topic") not in TOPICS:
+        errors.append("topic must be one of " + str(TOPICS))
+    if case.get("situation") != LOOP_SITUATION:
+        errors.append("situation must be " + LOOP_SITUATION)
+    state = case.get("state")
+    if not isinstance(state, dict):
+        errors.append("state must be an object")
+        state = {}
+    if state.get("revision") is not None:
+        errors.append("loop case state must not include revision")
+    alternatives = state.get("alternatives")
+    alternative_ids = (
+        [a.get("id") for a in alternatives if isinstance(a, dict)]
+        if isinstance(alternatives, list) else []
+    )
+    investigation = case.get("investigation")
+    if not isinstance(investigation, dict):
+        errors.append("investigation must be an object")
+    else:
+        injected = investigation.get("injected_evidence")
+        if (not isinstance(injected, list) or not injected
+                or not all(isinstance(item, str) and item.strip()
+                           for item in injected)):
+            errors.append(
+                "injected_evidence must be a non-empty list of non-empty strings"
+            )
+        phase1 = investigation.get("phase1")
+        if (not isinstance(phase1, dict)
+                or phase1.get("rule") != "evidence_insufficient"
+                or phase1.get("blocker_class") not in BLOCKER_CLASSES):
+            errors.append(
+                'phase1 must be {"rule": "evidence_insufficient", '
+                '"blocker_class": one of ' + str(BLOCKER_CLASSES) + "}"
+            )
+        phase2 = investigation.get("phase2")
+        if not isinstance(phase2, dict):
+            errors.append("phase2 must be an object")
+        else:
+            errors.extend(_validate_expectations(phase2, alternative_ids))
+            decisions = phase2.get("acceptable_decisions")
+            if isinstance(decisions, list) and not (
+                    set(decisions)
+                    & {"SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"}
+            ):
+                errors.append(
+                    "phase2.acceptable_decisions must include a selection decision"
+                )
+    if case.get("derived_from") is not None:
+        errors.append("derived_from must be null for loop cases")
+    return errors
+
+
+def load_loop_cases(cases_dir):
+    """Load and validate every loop case file in cases_dir (sorted by filename)."""
+    cases = []
+    violations = []
+    for path in sorted(Path(cases_dir).glob("*.json")):
+        try:
+            case = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise CaseError(
+                f"{path.name}: cannot load ({type(error).__name__})"
+            ) from None
+        errors = validate_loop_case(case)
+        if errors:
+            violations.append(f"{path.name}: " + "; ".join(errors))
+        cases.append(case)
+    if violations:
+        raise CaseError(
+            "invalid loop case files:\n  - " + "\n  - ".join(violations)
+        )
+    ids = [case.get("id") for case in cases]
+    if len(ids) != len(set(ids)):
+        raise CaseError("duplicate loop case ids: " + str(sorted(ids)))
+    return cases
+
+
+def loop_phase2_state(case):
+    """The post-investigation state: injected evidence plus a spent revision."""
+    state = copy.deepcopy(case["state"])
+    state["evidence"] = list(state.get("evidence", [])) + list(
+        case["investigation"]["injected_evidence"]
+    )
+    state["revision"] = {
+        "round": 1,
+        "action": "investigation",
+        "summary": "injected by eval runner",
+    }
+    return state
 
 
 def load_cases(cases_dir):
