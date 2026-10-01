@@ -544,3 +544,107 @@ def test_describe_rejects_nonobject_snapshot_parsed_values(tmp_path):
         "evaluation_snapshot": {"schema_version": 1, "parsed": [{}], "thresholds": _thresholds(),
                                 "gate_order": "human_first", "evaluated_option_ids": ["option_a", "option_b"]}}}) + "\n")
     assert cal.main(["describe", "--runs-file", str(runs), "--out-file", str(tmp_path / "description.json")]) == 2
+
+
+@pytest.fixture(scope="module")
+def frozen_calibration_policy(tmp_path_factory):
+    import json
+    import calibrate_thresholds as cal
+    tmp = tmp_path_factory.mktemp("frozen_calibration")
+    root, training, manifest, cases = cli_fixture(tmp)
+    out = tmp / "search"
+    assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
+                     "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 0
+    return json.loads((out / "selected-policy.json").read_text()), manifest, cases
+
+
+def test_search_rejects_training_content_copied_under_new_validation_id(tmp_path):
+    import json
+    import hashlib
+    import calibrate_thresholds as cal
+    root, training, manifest, _ = cli_fixture(tmp_path)
+    data = json.loads(manifest.read_text())
+    entry = data["cases"][0]
+    case = json.loads((root / "cases" / "db_info_missing.json").read_text())
+    case["id"] = entry["id"]
+    case_path = manifest.parent / entry["path"]
+    case_path.write_text(json.dumps(case))
+    entry["sha256"] = hashlib.sha256(case_path.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(data))
+    out = tmp_path / "search"
+    assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
+                     "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 2
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("change", ["no_hashes", "hash_value", "aggregate_hash", "hash_keys", "reference_empty",
+    "case_set", "phase_set", "zero_valid", "negative_coverage", "coverage_bool", "coverage_total",
+    "complete_false", "unavailable_count", "missing_count", "unsafe_range", "clear_correct_range",
+    "clear_partition", "confirmed_correct", "db_pass_range", "evidence_range", "asked_range", "count_bool"])
+def test_frozen_policy_rejects_inconsistent_hashes_coverage_and_counts(frozen_calibration_policy, change):
+    import calibrate_thresholds as cal
+    policy = copy.deepcopy(frozen_calibration_policy[0])
+    reference, candidate = policy["training"]["reference"], policy["training"]["candidate"]
+    key = next(iter(candidate["coverage"]))
+    phase = candidate["coverage"][key]["1"]
+    counts = candidate["counts"]
+    if change == "no_hashes": policy.pop("training_case_hashes")
+    elif change == "hash_value": policy["training_case_hashes"][key] = "invalid"
+    elif change == "aggregate_hash": policy["training_case_hash"] = "0" * 64
+    elif change == "hash_keys": policy["training_case_hashes"].pop(key)
+    elif change == "reference_empty": reference["coverage"] = {}
+    elif change == "case_set": candidate["coverage"]["other"] = candidate["coverage"].pop(key)
+    elif change == "phase_set": candidate["coverage"][key]["2"] = copy.deepcopy(phase)
+    elif change == "zero_valid": phase.update(valid=0, missing=3)
+    elif change == "negative_coverage": phase.update(valid=4, missing=-1)
+    elif change == "coverage_bool": phase["unavailable"] = False
+    elif change == "coverage_total": phase["missing"] = 1
+    elif change == "complete_false": candidate["complete"] = False
+    elif change == "unavailable_count": counts["unavailable"] = 1
+    elif change == "missing_count": counts["missing"] = 1
+    elif change == "unsafe_range": counts["unsafe"] = 88
+    elif change == "clear_correct_range": counts["clear_correct"] = counts["clear_completed"] + 1
+    elif change == "clear_partition": counts["unnecessary_asks"] = 1
+    elif change == "confirmed_correct": counts["confirmed_correct"] -= 1
+    elif change == "db_pass_range": counts["db_loop_passes"] = 4
+    elif change == "evidence_range": counts["evidence_misses"] = 22
+    elif change == "asked_range": counts["asked_ok"] = counts["ask_expected"] + 1
+    elif change == "count_bool": counts["unsafe"] = False
+    with pytest.raises(ValueError):
+        cal._validate_selected_policy(policy)
+
+
+def test_manifest_rejects_overlapping_acceptable_and_forbidden_selections(tmp_path):
+    import json
+    import hashlib
+    import calibrate_thresholds as cal
+    _, _, manifest, _ = cli_fixture(tmp_path)
+    data = json.loads(manifest.read_text())
+    entry = data["cases"][1]
+    path = manifest.parent / entry["path"]
+    case = json.loads(path.read_text())
+    case["expectations"]["forbidden_selections"] = case["expectations"]["acceptable_selections"]
+    path.write_text(json.dumps(case))
+    entry["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest.write_text(json.dumps(data))
+    with pytest.raises(ValueError):
+        cal.load_validation_manifest(manifest)
+
+
+@pytest.mark.parametrize("bad_id", [[], {}, None, 1, True])
+def test_validate_returns_input_error_for_nonstring_case_id(tmp_path, frozen_calibration_policy, bad_id):
+    import json
+    import calibrate_thresholds as cal
+    policy, manifest, cases = frozen_calibration_policy
+    policy_file = tmp_path / "policy.json"
+    policy_file.write_text(json.dumps(policy))
+    run = captured_runs(cases[0], 0.2)[0]
+    run["case_id"] = bad_id
+    run["resolution"]["evaluation_snapshot"]["thresholds"] = policy["thresholds"]
+    run["resolution"]["evaluation_snapshot"]["gate_order"] = policy["gate_order"]
+    runs = tmp_path / "runs.jsonl"
+    runs.write_text(json.dumps(run) + "\n")
+    out = tmp_path / "validation"
+    assert cal.main(["validate", "--policy-file", str(policy_file), "--manifest", str(manifest),
+                     "--runs-file", str(runs), "--out-dir", str(out)]) == 2
+    assert not out.exists()

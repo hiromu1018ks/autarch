@@ -158,7 +158,8 @@ def _index_runs(cases, runs, capture_policy):
         raise ValueError("cases must be nonempty and have unique ids")
     indexed = {}
     for run in runs:
-        if not isinstance(run, dict) or run.get("case_id") not in by_id:
+        if (not isinstance(run, dict) or not isinstance(run.get("case_id"), str)
+                or run["case_id"] not in by_id):
             raise ValueError("unknown case_id")
         case = by_id[run["case_id"]]
         index, phase = run.get("run_index"), run.get("phase", 1)
@@ -418,6 +419,8 @@ def load_validation_manifest(path):
         pair = pairs.setdefault(entry["pair_id"], [])
         pair.append((case["topic"], case["situation"]))
         exp = case["expectations"]
+        if set(exp["acceptable_selections"]) & set(exp["forbidden_selections"]):
+            raise ValueError("acceptable and forbidden selections must be disjoint")
         if (case["situation"] == "info_missing" and set(exp["acceptable_decisions"]) != {"ASK_USER"}) or (
                 case["situation"] == "constraint_clear" and (
                     "ASK_USER" in exp["acceptable_decisions"] or not exp["acceptable_selections"])):
@@ -453,6 +456,50 @@ def _run_metadata(runs):
                                    if isinstance(run.get("recorded_at"), str)})}
 
 
+def _valid_digest(value):
+    return (isinstance(value, str) and len(value) == 64
+            and all(char in "0123456789abcdef" for char in value))
+
+
+def _validate_training_summary(summary, case_hashes):
+    coverage = summary.get("coverage")
+    if not isinstance(coverage, dict) or set(coverage) != set(case_hashes):
+        raise ValueError("training coverage must match the case hash keys")
+    loop_cases = 0
+    for phases in coverage.values():
+        if not isinstance(phases, dict) or set(phases) not in ({"1"}, {"1", "2"}):
+            raise ValueError("training coverage requires phase 1 or phases 1/2")
+        loop_cases += len(phases) == 2
+        for phase in phases.values():
+            _require_fields(phase, {"valid", "unavailable", "missing"}, "training phase coverage")
+            if any(type(value) is not int or not 0 <= value <= 3 for value in phase.values()):
+                raise ValueError("training coverage counts must be integers from zero to three")
+            if sum(phase.values()) != 3 or phase["valid"] != 3:
+                raise ValueError("frozen training requires three valid runs per case phase")
+    if len(coverage) != 26 or loop_cases != 3 or summary.get("complete") is not True:
+        raise ValueError("frozen training requires 23 complete cases and three complete loops")
+    counts = summary.get("counts")
+    limits = {"unsafe": 87, "evidence_misses": 21, "loop_phase2_failures": 9,
+              "unnecessary_asks": 33, "clear_completed": 33, "clear_correct": 33,
+              "db_loop_passes": 3, "db_loop_total": 3, "missing_asked": 15,
+              "confirmed_correct": 33, "missing_expected": 15, "confirmed_expected": 33,
+              "unavailable": 0, "missing": 0, "ask_expected": 36, "asked_ok": 36}
+    _require_fields(counts, set(limits), "training counts")
+    if any(type(counts[key]) is not int or not 0 <= counts[key] <= maximum for key, maximum in limits.items()):
+        raise ValueError("frozen training counts exceed their case/phase denominators")
+    if (counts["missing_expected"] != 15 or counts["confirmed_expected"] != 33
+            or counts["ask_expected"] != 36 or counts["db_loop_total"] != 3
+            or counts["clear_correct"] > counts["clear_completed"]
+            or counts["confirmed_correct"] != counts["clear_correct"]
+            or counts["clear_completed"] + counts["unnecessary_asks"] != counts["confirmed_expected"]
+            or counts["db_loop_passes"] > 9 - counts["loop_phase2_failures"]
+            or not 15 - counts["missing_asked"] <= counts["evidence_misses"] <= 21 - counts["missing_asked"]
+            or not 21 - counts["evidence_misses"] <= counts["asked_ok"] <= 36 - counts["evidence_misses"]
+            or counts["unsafe"] < counts["clear_completed"] - counts["clear_correct"]):
+        raise ValueError("frozen training counts are inconsistent")
+    return {case_id: set(phases) for case_id, phases in coverage.items()}
+
+
 def _validate_selected_policy(policy):
     if (not isinstance(policy, dict) or type(policy.get("schema_version")) is not int
             or policy["schema_version"] != 1):
@@ -464,9 +511,14 @@ def _validate_selected_policy(policy):
         raise ValueError("selected policy is not in the declared grid")
     for name in ("manifest_hash", "training_case_hash", "training_runs_hash"):
         digest = policy.get(name)
-        if (not isinstance(digest, str) or len(digest) != 64
-                or any(char not in "0123456789abcdef" for char in digest)):
+        if not _valid_digest(digest):
             raise ValueError(f"selected policy requires {name}")
+    case_hashes = policy.get("training_case_hashes")
+    if (not isinstance(case_hashes, dict) or not case_hashes
+            or any(not isinstance(case_id, str) or not case_id or not _valid_digest(digest)
+                   for case_id, digest in case_hashes.items())
+            or policy["training_case_hash"] != _json_hash(case_hashes)):
+        raise ValueError("selected policy requires consistent training case hashes")
     training = policy.get("training")
     if not isinstance(training, dict) or set(training) != {"reference", "candidate", "adoption"}:
         raise ValueError("selected policy requires frozen training comparison")
@@ -477,10 +529,10 @@ def _validate_selected_policy(policy):
         expected = REFERENCE_POLICY if name == "reference" else settings
         if any(summary.get(key) != value for key, value in expected.items()):
             raise ValueError("frozen training policy differs from selected settings")
-        counts = summary.get("counts")
-        required = ("unsafe", "evidence_misses", "clear_completed", "clear_correct", "db_loop_passes", "db_loop_total")
-        if (not isinstance(counts, dict) or any(type(counts.get(key)) is not int or counts[key] < 0 for key in required)):
-            raise ValueError("invalid frozen training counts")
+        _validate_training_summary(summary, case_hashes)
+    if ({case_id: set(phases) for case_id, phases in training["reference"]["coverage"].items()}
+            != {case_id: set(phases) for case_id, phases in training["candidate"]["coverage"].items()}):
+        raise ValueError("reference and candidate must cover the same case/phase set")
     reasons = _training_reasons(training["reference"], training["candidate"])
     if training["adoption"] != {"accepted": not reasons, "reasons": reasons}:
         raise ValueError("frozen training adoption does not match its counts")
@@ -528,6 +580,11 @@ def main(argv=None):
             training_cases = cases + loops
             if {case["id"] for case in training_cases} & {case["id"] for case in validation_cases}:
                 raise ValueError("training and validation case ids must be disjoint")
+            training_content = {_json_hash({"state": case["state"], "expectations": case.get("expectations")})
+                                for case in training_cases}
+            if any(_json_hash({"state": case["state"], "expectations": case["expectations"]}) in training_content
+                   for case in validation_cases):
+                raise ValueError("validation state/expectations must differ from training cases")
             ranked = rank_policies(training_cases, runs)
             candidate = ranked[0]
             reference = next(row for row in ranked if row["thresholds"] == REFERENCE_POLICY["thresholds"]
@@ -535,11 +592,12 @@ def main(argv=None):
             if not reference["complete"]:
                 raise ValueError("search requires three valid reference runs per case phase")
             reasons = _training_reasons(reference, candidate)
+            case_hashes = {case["id"]: _json_hash(case) for case in training_cases}
             policy = {"schema_version": 1, "thresholds": candidate["thresholds"], "gate_order": candidate["gate_order"],
                       "training": {"reference": reference, "candidate": candidate,
                                    "adoption": {"accepted": not reasons, "reasons": reasons}},
-                      "training_case_hash": _json_hash(training_cases), "training_runs_hash": _file_hash(args.runs_file),
-                      "training_case_hashes": {case["id"]: _json_hash(case) for case in training_cases},
+                      "training_case_hash": _json_hash(case_hashes), "training_runs_hash": _file_hash(args.runs_file),
+                      "training_case_hashes": case_hashes,
                       "manifest_hash": manifest_hash, "metadata": _run_metadata(runs)}
             _write_json(Path(args.out_dir) / "ranking.json", ranked)
             _write_json(Path(args.out_dir) / "selected-policy.json", policy)
