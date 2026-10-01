@@ -1,0 +1,8 @@
+{
+  "situation": "info_missing",
+  "required_alternatives": [["standard library", "stdlib", "built-in"], ["pandas"]],
+  "forbidden_alternatives": [],
+  "acceptable_decisions": ["ASK_USER"],
+  "acceptable_selections": [],
+  "requires_human_preference": false
+}

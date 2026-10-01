@@ -1,0 +1,8 @@
+{
+  "situation": "preference_needed",
+  "required_alternatives": [["session", "cookie"], ["jwt"]],
+  "forbidden_alternatives": [],
+  "acceptable_decisions": ["ASK_USER"],
+  "acceptable_selections": [],
+  "requires_human_preference": true
+}

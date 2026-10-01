@@ -1,0 +1,8 @@
+{
+  "situation": "constraint_clear",
+  "required_alternatives": [["pytest"]],
+  "forbidden_alternatives": [],
+  "acceptable_decisions": ["SELECT_OPTION", "SELECT_OPTION_WITH_CAUTION"],
+  "acceptable_selections": [["pytest"]],
+  "requires_human_preference": false
+}
