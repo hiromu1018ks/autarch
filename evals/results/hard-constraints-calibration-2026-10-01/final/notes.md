@@ -203,3 +203,28 @@ authentication/dependencyは空structured、deploymentはlegacyだった。
 低sufficiencyでもblocker confidenceによりゲートが不発になることが残る課題。
 費用額・トークン数はrunnerの保存対象でなく、実費の集計はしていない。
 この少数ケースの結果を一般的な品質保証とはしない。
+
+## 2026-10-02追記: runtimeの応答ID修正は承認済み、live認証再評価はAPI接続失敗
+
+上記は修正前の原評価として保全する。runtime修正 `f4e8920` は独立レビューで承認され、
+controllerの修正後全体試験は617 passed / 3 skipped（14.79秒）、diff checkは終了コード0。
+本追記の作業では試験を重ねていない。
+
+認証だけをsonnetで1回、[別ディレクトリ](../full-flow-after-response-fix/notes.md)へ再実行した。
+runner終了コード0に対してClaudeは181.1秒後に終了コード1、agent出力はAPI接続の
+`EAI_AGAIN` エラーだった。state/resolution未生成、status=failed、verdict=null。
+修正後のlive判断は未観測であり、原5件の率・分母・認証unavailable記録を置き換えない。
+network restrictedの迂回、他シナリオやdependencyの再試行はしていない。
+
+元の認証stateを変更せず、既存helperの既定値で事前に固定した合成応答を使う
+[offline replay](../full-flow-after-response-fix/synthetic_replay_provenance.json)も保存した。
+provider/agent呼び出し0件で合法credential IDのScoreをparse/mainのsnapshotへ保持した。
+合成のhuman_preference=.1、confidence=.9、sufficiency=.9、先頭候補Score2/他1による結果は
+SELECT_OPTION/confidenceとなり、実fixtureのASK_USER期待に対する合成decision_okはfalse。
+parser経路の確認に限り、liveの行動品質を裏付ける結果とはしない。
+
+held-out候補は不採用、既定値維持。fixed unsafe8/69とdeployment誤自動採用の原観測も変わらない。
+calibration replayの合法ID伏せ字問題は後続修正で解消し、controller報告は638 passed / 3 skipped。
+最終の限定再レビューは現作業ツリーのコード品質とTask8の評価記録・文書を承認し、残る指摘0件。
+live認証の修正後判断はEAI_AGAINで未観測、既存の根拠・調査経路の留保も残る。
+gitのread-only制限でcommit・統合は未完了。この承認はcommit・mergeやlive品質検証の完了を意味しない。

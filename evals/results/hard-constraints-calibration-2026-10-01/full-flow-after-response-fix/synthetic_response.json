@@ -1,0 +1,184 @@
+{
+  "model": "jev-test",
+  "answers": {
+    "requires_human_preference": {
+      "type": "noul",
+      "noul": 0.1
+    },
+    "evidence_sufficiency": {
+      "type": "noul",
+      "noul": 0.9
+    },
+    "blocker_class": {
+      "type": "choice",
+      "choice": "facts_missing",
+      "confidence": 0.9,
+      "probabilities": {
+        "user_preference_unknown": 0.1,
+        "facts_missing": 0.7,
+        "material_bias": 0.1,
+        "balanced_tie": 0.1
+      }
+    },
+    "best_option": {
+      "type": "choice",
+      "choice": "server_session_cookie",
+      "confidence": 0.9,
+      "probabilities": {
+        "server_session_cookie": 0.85,
+        "stateless_jwt_bearer": 0.075,
+        "http_basic_per_request": 0.075
+      }
+    },
+    "score__credential_and_session_security__server_session_cookie": {
+      "type": "score",
+      "score": 2.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0
+      }
+    },
+    "score__credential_and_session_security__stateless_jwt_bearer": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__credential_and_session_security__http_basic_per_request": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__current_architecture_fit__server_session_cookie": {
+      "type": "score",
+      "score": 2.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0
+      }
+    },
+    "score__current_architecture_fit__stateless_jwt_bearer": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__current_architecture_fit__http_basic_per_request": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__implementation_simplicity__server_session_cookie": {
+      "type": "score",
+      "score": 2.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0
+      }
+    },
+    "score__implementation_simplicity__stateless_jwt_bearer": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__implementation_simplicity__http_basic_per_request": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__future_client_flexibility__server_session_cookie": {
+      "type": "score",
+      "score": 2.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0
+      }
+    },
+    "score__future_client_flexibility__stateless_jwt_bearer": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__future_client_flexibility__http_basic_per_request": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__session_lifecycle_control__server_session_cookie": {
+      "type": "score",
+      "score": 2.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 0.0,
+        "2": 1.0
+      }
+    },
+    "score__session_lifecycle_control__stateless_jwt_bearer": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    },
+    "score__session_lifecycle_control__http_basic_per_request": {
+      "type": "score",
+      "score": 1.0,
+      "confidence": 0.9,
+      "probabilities": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 0.0
+      }
+    }
+  }
+}

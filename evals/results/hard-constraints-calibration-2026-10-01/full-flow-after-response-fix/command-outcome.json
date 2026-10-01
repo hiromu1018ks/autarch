@@ -1,0 +1,26 @@
+{
+  "command": ".venv/bin/python3 evals/run_full_flow.py --out-dir evals/results/hard-constraints-calibration-2026-10-01/full-flow-after-response-fix --agent-model sonnet --scenario authentication",
+  "invocations": 1,
+  "runner_exit_code": 0,
+  "code_commit": "f4e89201a38dcde564fd30eba5308167de46a7c6",
+  "record": {
+    "scenario": "authentication",
+    "situation": "preference_needed",
+    "status": "failed",
+    "reason": "missing artifacts: autarch-state.json, autarch-resolution.json",
+    "verdict": null,
+    "agent_model": "sonnet",
+    "claude_exit_code": 1,
+    "duration_s": 181.1,
+    "recorded_at": "2026-10-01T22:11:49Z"
+  },
+  "agent_error": "API Error: Can't reach the API server — check your internet or DNS (EAI_AGAIN)",
+  "live_decision_observed": false,
+  "followup_live_calls": 0,
+  "permissions": {
+    "network": "restricted",
+    "git": "read-only"
+  },
+  "synthetic_evidence": "synthetic_replay_provenance.json",
+  "original_evidence_manifest": "original-evidence-sha256.json"
+}

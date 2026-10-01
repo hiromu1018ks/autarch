@@ -1,0 +1,50 @@
+{
+  "kind": "synthetic_offline_replay",
+  "live_outcome": false,
+  "provider_calls": 0,
+  "agent_calls": 0,
+  "main_send_request_stub_calls": 1,
+  "code_commit": "f4e89201a38dcde564fd30eba5308167de46a7c6",
+  "source_state": "evals/results/hard-constraints-calibration-2026-10-01/final/full_flow/authentication/autarch-state.json",
+  "source_state_sha256": "839c568414a47d58db6717b37c38027236757051188c80c8ffb385a2d4bed7f1",
+  "synthetic_response_sha256": "b9e430c92422b37c23d2fdcb6110cc7ab8824999204645c1878cc4ef5b5fd7b3",
+  "answer_generator": "tests/test_decide.py make_answers defaults, answers_body",
+  "thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.5
+  },
+  "gate_order": "human_first",
+  "valid_state_errors": [],
+  "constraint_check": {
+    "mode": "structured",
+    "eligible_option_ids": [
+      "server_session_cookie",
+      "stateless_jwt_bearer",
+      "http_basic_per_request"
+    ],
+    "excluded_options": [],
+    "unknown_assessments": []
+  },
+  "expected_credential_scores": {
+    "server_session_cookie": 2.0,
+    "stateless_jwt_bearer": 1.0,
+    "http_basic_per_request": 1.0
+  },
+  "credential_scores_preserved": true,
+  "decision": "SELECT_OPTION",
+  "rule": "confidence",
+  "synthetic_verdict": {
+    "coverage": true,
+    "forbidden_avoided": true,
+    "decision_ok": false,
+    "state_valid": true,
+    "selected_group": null
+  },
+  "main_exit_code": 0,
+  "stderr": "",
+  "limitation": "Invented numeric answers prove parser/runtime processing only. Their selection fails the real authentication ASK_USER expectation; no live agent/provider behavior or quality claim follows."
+}

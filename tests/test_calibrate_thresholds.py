@@ -22,6 +22,73 @@ def snapshot_for(state, **answers_kwargs):
             "evaluated_option_ids": [a["id"] for a in evaluated["alternatives"]]}
 
 
+@pytest.mark.parametrize("keyword", ["credential", "password", "token", "api_key"])
+@pytest.mark.parametrize("location", ["criterion", "alternative"])
+def test_replay_preserves_captured_keyword_identifiers(keyword, location):
+    state = _valid_state()
+    criterion_id = keyword + "_fit" if location == "criterion" else "fit"
+    option_id = keyword + "_option" if location == "alternative" else "option_a"
+    state["criteria"][0]["id"] = criterion_id
+    state["alternatives"][0]["id"] = option_id
+    snapshot = snapshot_for(state)
+    before = copy.deepcopy((state, snapshot))
+    evaluated, constraint_check, early = decide.check_constraints(state)
+    assert early is None
+    direct = decide.resolve(evaluated, snapshot["parsed"], _thresholds())
+    direct["constraint_check"] = decide.redact(constraint_check)[0]
+    assert (direct["decision"], direct["rule"], direct["selected_option"]) == (
+        "SELECT_OPTION", "confidence", option_id)
+    result = replay(state, snapshot)
+    assert result == direct
+    assert result["probabilities"] == {option_id: 0.85, "option_b": 0.15}
+    assert result["score_summary"][option_id][criterion_id] == 1.0
+    assert (state, snapshot) == before
+    # A caller editing a replay result must not alter the captured input.
+    result["probabilities"][option_id] = 0.0
+    assert (state, snapshot) == before
+
+
+@pytest.mark.parametrize("field", ["human_preference", "confidence", "evidence_sufficiency",
+                                   "blocker_confidence", "probabilities", "scores",
+                                   "choice", "blocker_class"])
+def test_replay_rejects_secret_values_without_exposing_them(field):
+    state = _valid_state()
+    state["criteria"][0]["id"] = "credential_fit"
+    state["alternatives"][0]["id"] = "token_option"
+    snapshot = snapshot_for(state)
+    secret = "sk-syntheticsecretvalue123"
+    if field == "probabilities":
+        snapshot["parsed"][field]["token_option"] = secret
+    elif field == "scores":
+        snapshot["parsed"][field]["credential_fit"]["token_option"] = secret
+    else:
+        snapshot["parsed"][field] = secret
+    before = copy.deepcopy((state, snapshot))
+    with pytest.raises(ValueError) as error:
+        replay(state, snapshot)
+    assert secret not in str(error.value)
+    assert (state, snapshot) == before
+
+
+@pytest.mark.parametrize("location", ["snapshot", "parsed", "probabilities", "scores", "score_options"])
+def test_replay_rejects_secret_metadata_and_extra_identifiers(location):
+    state = _valid_state()
+    state["criteria"][0]["id"] = "credential_fit"
+    state["alternatives"][0]["id"] = "token_option"
+    snapshot = snapshot_for(state)
+    targets = {"snapshot": snapshot, "parsed": snapshot["parsed"],
+               "probabilities": snapshot["parsed"]["probabilities"],
+               "scores": snapshot["parsed"]["scores"],
+               "score_options": snapshot["parsed"]["scores"]["credential_fit"]}
+    secret = "sk-syntheticsecretvalue123"
+    targets[location][secret] = {"api_key": secret, "explanation": secret}
+    before = copy.deepcopy((state, snapshot))
+    with pytest.raises(ValueError) as error:
+        replay(state, snapshot)
+    assert secret not in str(error.value)
+    assert (state, snapshot) == before
+
+
 def test_replay_preserves_close_score_winner():
     state = _valid_state()
     snapshot = snapshot_for(state)

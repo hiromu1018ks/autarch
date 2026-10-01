@@ -1,6 +1,31 @@
 # Autarch 拡張開発の状態
 
-必須条件の採点前検査と閾値比較を実装し、Task8の最終評価の原記録まで取得した。検証用30件で閾値候補は不採用となり、既定値を維持した。最終full-flowで見つかった応答IDの伏せ字バグは未修正で、独立した修正・レビュー・影響シナリオの再評価待ち。
+必須条件の採点前検査と閾値比較を実装し、閾値候補は検証用で不採用となり既定値を維持した。runtimeの応答ID伏せ字バグは `f4e8920` で修正・独立レビュー済み。修正後の認証full-flowはAPI接続エラーで判定に届かず、live挙動は未観測。calibration replayの合法ID伏せ字問題も修正し、最終の限定再レビューはコード品質・評価記録を承認、残る指摘0件。gitのread-only制限でcommit・統合は未完了。
+
+## 2026-10-02: runtime修正を確認し、認証のlive再評価は接続失敗として記録した
+
+`f4e8920` のruntime応答処理修正は独立レビューで承認済み。controllerの修正後全体試験は
+617 passed / 3 skipped（14.79秒）、diff check終了コード0。本評価作業では再実行していない。
+[認証だけの再評価](evals/results/hard-constraints-calibration-2026-10-01/full-flow-after-response-fix/notes.md)は
+sonnetで1回実行し、Claudeが181.1秒後に終了コード1でAPI接続のEAI_AGAINエラーを返した。
+runnerは終了コード0だがstate/resolution未生成、status=failed、verdict=null。
+記録は2026-10-01T22:11:49Z（日本時間2026-10-02 07:11:49）。修正後のlive判断は未観測で、
+他シナリオやdependencyは追加実行していない。restricted networkは迂回していない。
+
+元の保存認証stateを変更せず、既存helperの既定値による合成応答を事前に固定して
+parse/mainをオフライン確認した。provider/agent呼び出し0件で、合法credential IDのScoreは保持された。
+合成結果はSELECT_OPTION/confidence、fixtureのASK_USER期待に対する合成decision_okはfalse。
+[合成来歴](evals/results/hard-constraints-calibration-2026-10-01/full-flow-after-response-fix/synthetic_replay_provenance.json)を
+live記録と分けて保存した。この確認はparser経路に限り、行動品質や原評価の率を裏付けない。
+
+原結果は保全した。held-outの不採用、既定値維持、fixed unsafe8/69、deploymentの誤自動採用、
+原full-flow decision_ok2/3はそのまま。全ブランチレビューではcalibration replayの `redact(parsed)` が
+合法IDを破壊するImportant指摘は後続修正で解消した。controller報告は638 passed / 3 skipped。
+最終の限定再レビューは現作業ツリーのコード品質とTask8の評価記録・文書を承認し、
+Critical/Important/Minorは各0件、修正起因の新たな破損も認めなかった。承認はcommit・merge完了を意味しない。
+gitのread-only制限が解消した環境で、承認済みの未commitコード・tests・文書・結果をcommitし、
+統合方法を選ぶ。mergeやpushは自動で行わない。ネットワーク復旧後の認証live確認は品質上の未検証事項として残す。
+候補の再選択・閾値再調整は行わない。agentの根拠の証明範囲・必須化、調査経路、ルール順序と費用未集計も留保を維持する。
 
 ## 2026-10-01: 最終原評価を保存し、応答処理バグの修正へ引き継ぐ
 

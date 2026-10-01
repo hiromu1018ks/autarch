@@ -1,5 +1,6 @@
 """Validate captured evaluations and replay policies through the decision engine."""
 
+import copy
 import math
 from datetime import datetime, timezone
 import re
@@ -74,7 +75,8 @@ def _validate_parsed(parsed, state):
     for name in ("human_preference", "confidence", "evidence_sufficiency", "blocker_confidence"):
         _number(parsed[name], 1.0, f"parsed.{name}")
     choice = parsed["choice"]
-    if not _valid_id(choice) or choice not in option_ids:
+    if (not _valid_id(choice) or choice not in option_ids
+            or decide.redact(choice)[0] != choice):
         raise ValueError("parsed.choice must be an evaluated option id")
     probabilities = parsed["probabilities"]
     _require_fields(probabilities, option_ids, "parsed.probabilities")
@@ -120,8 +122,10 @@ def replay_resolution(state: dict, snapshot: dict, thresholds: dict, gate_order:
             or len(set(option_ids)) != len(option_ids)
             or option_ids != [a["id"] for a in evaluated["alternatives"]]):
         raise ValueError("evaluated_option_ids must match the engine's evaluated options exactly")
-    parsed, _ = decide.redact(snapshot["parsed"])
+    # Validate typed signals directly: key-based redaction corrupts known IDs.
+    parsed = snapshot["parsed"]
     _validate_parsed(parsed, evaluated)
+    parsed = copy.deepcopy(parsed)
     resolution = decide.resolve(evaluated, parsed, thresholds,
                                 gate_order=gate_order)
     resolution["constraint_check"] = decide.redact(constraint_check)[0]

@@ -1,0 +1,40 @@
+{
+  "human_preference": 0.1,
+  "choice": "server_session_cookie",
+  "confidence": 0.9,
+  "probabilities": {
+    "server_session_cookie": 0.85,
+    "stateless_jwt_bearer": 0.075,
+    "http_basic_per_request": 0.075
+  },
+  "scores": {
+    "credential_and_session_security": {
+      "server_session_cookie": 2.0,
+      "stateless_jwt_bearer": 1.0,
+      "http_basic_per_request": 1.0
+    },
+    "current_architecture_fit": {
+      "server_session_cookie": 2.0,
+      "stateless_jwt_bearer": 1.0,
+      "http_basic_per_request": 1.0
+    },
+    "implementation_simplicity": {
+      "server_session_cookie": 2.0,
+      "stateless_jwt_bearer": 1.0,
+      "http_basic_per_request": 1.0
+    },
+    "future_client_flexibility": {
+      "server_session_cookie": 2.0,
+      "stateless_jwt_bearer": 1.0,
+      "http_basic_per_request": 1.0
+    },
+    "session_lifecycle_control": {
+      "server_session_cookie": 2.0,
+      "stateless_jwt_bearer": 1.0,
+      "http_basic_per_request": 1.0
+    }
+  },
+  "evidence_sufficiency": 0.9,
+  "blocker_class": "facts_missing",
+  "blocker_confidence": 0.9
+}

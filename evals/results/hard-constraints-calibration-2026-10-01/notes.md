@@ -90,3 +90,26 @@ unavailableは認証のScore回答処理停止と依存関係のHTTP520で原因
 既存bugを正しい合成応答でオフライン再現した。原結果を保全し、独立TDD修正とreview後に
 影響シナリオだけ別ディレクトリで再実行する。dependencyの追加実行は行わない。
 最終統合・完了判断はこの修正と最終レビュー後に扱う。
+
+## 2026-10-02: 応答ID修正は承認済み、認証再評価はAPI接続失敗で未観測
+
+runtimeの `f4e8920` は独立レビューで承認され、controllerは617 passed / 3 skipped
+（14.79秒）とdiff check終了コード0を確認した。全体試験は本作業で再実行していない。
+認証だけをsonnetで1回 [修正後ディレクトリ](full-flow-after-response-fix/notes.md)へ実行したが、
+Claudeは181.1秒後に終了コード1、API接続のEAI_AGAINエラーとなった。
+runner自体は終了コード0、state/resolution未生成、status=failed、verdict=null。
+修正後のlive認証判断は未観測。restricted networkを迂回せず、他シナリオの追加呼び出しもない。
+
+元の保存認証stateに事前固定した合成応答を与え、provider/agent呼び出し0件で
+合法credential IDのScoreをparseとmainのsnapshotに保持した。
+[合成来歴](full-flow-after-response-fix/synthetic_replay_provenance.json)の数値はhelper既定値で、
+human_preference=.1、confidence=.9、sufficiency=.9、先頭候補Score2/他1。
+結果SELECT_OPTION/confidenceはfixtureのASK_USER期待に合わず、合成decision_okはfalse。
+この確認はruntimeの応答処理に限り、liveの品質評価や原集計へ加算しない。
+
+原結果は保全した。held-out候補の不採用と既定値維持、fixed unsafe8/69、
+deploymentの誤自動採用、原full-flow decision_ok2/3は変わらない。
+calibration replayの合法ID伏せ字のImportant指摘は後続修正で解消し、controller報告は638 passed / 3 skipped。
+最終の限定再レビューは現作業ツリーのコード品質とTask8の評価記録・文書を承認、残る指摘0件。
+修正後のlive認証判断はEAI_AGAINで未観測のまま。gitがread-onlyのためcommit・統合は未完了で、
+この承認をmerge完了や一般的な行動品質の保証とはしない。

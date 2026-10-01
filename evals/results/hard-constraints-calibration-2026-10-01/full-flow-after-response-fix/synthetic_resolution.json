@@ -1,0 +1,116 @@
+{
+  "decision": "SELECT_OPTION",
+  "rule": "confidence",
+  "selected_option": "server_session_cookie",
+  "confidence": 0.9,
+  "probability": 0.85,
+  "probabilities": {
+    "server_session_cookie": 0.85,
+    "stateless_jwt_bearer": 0.075,
+    "http_basic_per_request": 0.075
+  },
+  "human_preference_probability": 0.1,
+  "score_summary": {
+    "server_session_cookie": {
+      "credential_and_session_security": 1.0,
+      "current_architecture_fit": 1.0,
+      "implementation_simplicity": 1.0,
+      "future_client_flexibility": 1.0,
+      "session_lifecycle_control": 1.0,
+      "composite": 1.0
+    },
+    "stateless_jwt_bearer": {
+      "credential_and_session_security": 0.5,
+      "current_architecture_fit": 0.5,
+      "implementation_simplicity": 0.5,
+      "future_client_flexibility": 0.5,
+      "session_lifecycle_control": 0.5,
+      "composite": 0.5
+    },
+    "http_basic_per_request": {
+      "credential_and_session_security": 0.5,
+      "current_architecture_fit": 0.5,
+      "implementation_simplicity": 0.5,
+      "future_client_flexibility": 0.5,
+      "session_lifecycle_control": 0.5,
+      "composite": 0.5
+    }
+  },
+  "evidence_sufficiency": 0.9,
+  "blocker_class": null,
+  "blocker_confidence": null,
+  "evaluation_signals": {
+    "blocker_class": "facts_missing",
+    "blocker_confidence": 0.9
+  },
+  "evaluation_snapshot": {
+    "schema_version": 1,
+    "parsed": {
+      "human_preference": 0.1,
+      "choice": "server_session_cookie",
+      "confidence": 0.9,
+      "probabilities": {
+        "server_session_cookie": 0.85,
+        "stateless_jwt_bearer": 0.075,
+        "http_basic_per_request": 0.075
+      },
+      "scores": {
+        "credential_and_session_security": {
+          "server_session_cookie": 2.0,
+          "stateless_jwt_bearer": 1.0,
+          "http_basic_per_request": 1.0
+        },
+        "current_architecture_fit": {
+          "server_session_cookie": 2.0,
+          "stateless_jwt_bearer": 1.0,
+          "http_basic_per_request": 1.0
+        },
+        "implementation_simplicity": {
+          "server_session_cookie": 2.0,
+          "stateless_jwt_bearer": 1.0,
+          "http_basic_per_request": 1.0
+        },
+        "future_client_flexibility": {
+          "server_session_cookie": 2.0,
+          "stateless_jwt_bearer": 1.0,
+          "http_basic_per_request": 1.0
+        },
+        "session_lifecycle_control": {
+          "server_session_cookie": 2.0,
+          "stateless_jwt_bearer": 1.0,
+          "http_basic_per_request": 1.0
+        }
+      },
+      "evidence_sufficiency": 0.9,
+      "blocker_class": "facts_missing",
+      "blocker_confidence": 0.9
+    },
+    "thresholds": {
+      "auto_select": 0.85,
+      "review": 0.6,
+      "min_gap": 0.15,
+      "human_preference": 0.7,
+      "sufficiency": 0.6,
+      "blocker_confidence": 0.5
+    },
+    "gate_order": "human_first",
+    "evaluated_option_ids": [
+      "server_session_cookie",
+      "stateless_jwt_bearer",
+      "http_basic_per_request"
+    ]
+  },
+  "reason": "Choice and Score agree on 'server_session_cookie' with confidence 0.90.",
+  "detail": null,
+  "model": "jev-latest",
+  "constraint_check": {
+    "mode": "structured",
+    "eligible_option_ids": [
+      "server_session_cookie",
+      "stateless_jwt_bearer",
+      "http_basic_per_request"
+    ],
+    "excluded_options": [],
+    "unknown_assessments": []
+  }
+}

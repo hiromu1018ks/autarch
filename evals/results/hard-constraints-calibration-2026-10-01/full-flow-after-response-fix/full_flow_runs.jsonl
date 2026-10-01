@@ -1,0 +1,1 @@
+{"scenario": "authentication", "situation": "preference_needed", "status": "failed", "reason": "missing artifacts: autarch-state.json, autarch-resolution.json", "verdict": null, "agent_model": "sonnet", "claude_exit_code": 1, "duration_s": 181.1, "recorded_at": "2026-10-01T22:11:49Z"}
