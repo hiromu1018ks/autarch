@@ -95,7 +95,12 @@ DEFAULT_AUTO_SELECT = 0.85
 DEFAULT_REVIEW = 0.60
 DEFAULT_MIN_GAP = 0.15
 DEFAULT_HUMAN_PREFERENCE = 0.70
+DEFAULT_SUFFICIENCY = 0.60
+DEFAULT_BLOCKER_CONFIDENCE = 0.50
 DEFAULT_TIMEOUT = 30
+
+REVISION_ACTIONS = ("investigation", "material_fix")
+REVISION_SUMMARY_LIMIT = 500
 
 QUESTION_LOG_LIMIT = 500
 
@@ -269,6 +274,28 @@ def validate_state(state) -> list[str]:
                 isinstance(level, str) and level.strip() for level in rubric
             ):
                 errors.append(f"{label}: rubric levels must be non-empty strings")
+
+    revision = state.get("revision")
+    if revision is not None:
+        if not isinstance(revision, dict):
+            errors.append("revision must be an object")
+        else:
+            round_value = revision.get("round")
+            if (not isinstance(round_value, int) or isinstance(round_value, bool)
+                    or round_value != 1):
+                errors.append("revision.round must be 1")
+            if revision.get("action") not in REVISION_ACTIONS:
+                errors.append(
+                    "revision.action must be one of " + str(REVISION_ACTIONS)
+                )
+            summary = revision.get("summary")
+            if not isinstance(summary, str) or not summary.strip():
+                errors.append("revision.summary must be a non-empty string")
+            elif len(summary) > REVISION_SUMMARY_LIMIT:
+                errors.append(
+                    "revision.summary must be at most "
+                    f"{REVISION_SUMMARY_LIMIT} characters"
+                )
 
     return errors
 
@@ -487,6 +514,9 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
         "probabilities": probabilities,
         "human_preference_probability": human_preference,
         "score_summary": score_summary,
+        "evidence_sufficiency": parsed["evidence_sufficiency"],
+        "blocker_class": None,
+        "blocker_confidence": None,
         "reason": "",
     }
 
@@ -497,6 +527,33 @@ def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
             "Jev indicates this decision depends on the user's personal "
             "preference or intent; it must not be auto-selected."
         )
+        return resolution
+
+    gate_fires = (
+        parsed["evidence_sufficiency"] < thresholds["sufficiency"]
+        and parsed["blocker_confidence"] >= thresholds["blocker_confidence"]
+    )
+    if gate_fires:
+        blocker = parsed["blocker_class"]
+        resolution["blocker_class"] = blocker
+        resolution["blocker_confidence"] = parsed["blocker_confidence"]
+        has_revision = isinstance(state.get("revision"), dict)
+        if has_revision and blocker in ("facts_missing", "material_bias"):
+            resolution["decision"] = "ASK_USER"
+            resolution["rule"] = "investigation_exhausted"
+            resolution["reason"] = (
+                "The single investigation round has been spent and the "
+                "evidence still does not support automatic selection; "
+                "returning the decision to the user."
+            )
+        else:
+            resolution["decision"] = "ASK_USER"
+            resolution["rule"] = "evidence_insufficient"
+            resolution["reason"] = (
+                f"Jev classifies the decision blocker as '{blocker}' "
+                f"(evidence sufficiency {parsed['evidence_sufficiency']:.2f}); "
+                "the evidence does not support automatic selection."
+            )
         return resolution
 
     choice_winner = parsed["choice"]
@@ -600,6 +657,8 @@ def build_log_record(state: dict, output: dict, latency_ms: int | None) -> dict:
         "choice_probabilities": output.get("probabilities"),
         "choice_confidence": output.get("confidence"),
         "human_preference_probability": output.get("human_preference_probability"),
+        "evidence_sufficiency": output.get("evidence_sufficiency"),
+        "blocker_class": output.get("blocker_class"),
         "resolution": output.get("decision"),
         "model": output.get("model"),
         "latency_ms": latency_ms,
@@ -616,6 +675,9 @@ def _empty_resolution(decision: str, rule: str) -> dict:
         "probabilities": None,
         "human_preference_probability": None,
         "score_summary": None,
+        "evidence_sufficiency": None,
+        "blocker_class": None,
+        "blocker_confidence": None,
         "reason": "",
     }
 
@@ -646,6 +708,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--human-preference", type=float, default=DEFAULT_HUMAN_PREFERENCE
     )
+    parser.add_argument("--sufficiency", type=float, default=DEFAULT_SUFFICIENCY)
+    parser.add_argument(
+        "--blocker-confidence", type=float, default=DEFAULT_BLOCKER_CONFIDENCE
+    )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
     args = parser.parse_args(argv)
@@ -671,6 +737,8 @@ def main(argv: list[str] | None = None) -> int:
         "review": args.review,
         "min_gap": args.min_gap,
         "human_preference": args.human_preference,
+        "sufficiency": args.sufficiency,
+        "blocker_confidence": args.blocker_confidence,
     }
 
     errors = validate_state(state)

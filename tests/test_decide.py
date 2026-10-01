@@ -39,6 +39,10 @@ def test_module_exposes_constants():
     assert decide.DEFAULT_HUMAN_PREFERENCE == 0.70
     assert decide.DEFAULT_TIMEOUT == 30
     assert decide.QUESTION_LOG_LIMIT == 500
+    assert decide.DEFAULT_SUFFICIENCY == 0.60
+    assert decide.DEFAULT_BLOCKER_CONFIDENCE == 0.50
+    assert decide.REVISION_ACTIONS == ("investigation", "material_fix")
+    assert decide.REVISION_SUMMARY_LIMIT == 500
 
 
 import copy
@@ -311,6 +315,58 @@ class TestValidateState:
         state["alternatives"][0]["id"] = "SECRETLOOKINGID sk-abcdefgh1234"
         errors = decide.validate_state(state)
         assert all("SECRETLOOKINGID" not in e for e in errors)
+
+
+class TestValidateStateRevision:
+    def _state(self):
+        state = _valid_state()
+        state["revision"] = {
+            "round": 1,
+            "action": "investigation",
+            "summary": "checked pyproject.toml and README",
+        }
+        return state
+
+    def test_valid_revision_passes(self):
+        assert decide.validate_state(self._state()) == []
+
+    def test_revision_absent_is_fine(self):
+        assert decide.validate_state(_valid_state()) == []
+
+    def test_revision_must_be_object(self):
+        state = _valid_state()
+        state["revision"] = ["round 1"]
+        assert any("revision must be an object" in e
+                   for e in decide.validate_state(state))
+
+    def test_round_must_be_exactly_one(self):
+        for bad in (0, 2, True, None, "1", 1.5):
+            state = self._state()
+            state["revision"]["round"] = bad
+            assert any("revision.round" in e
+                       for e in decide.validate_state(state)), bad
+
+    def test_action_must_be_known(self):
+        state = self._state()
+        state["revision"]["action"] = "rethinking"
+        assert any("revision.action" in e for e in decide.validate_state(state))
+
+    def test_summary_must_be_non_empty_string(self):
+        state = self._state()
+        state["revision"]["summary"] = "   "
+        assert any("revision.summary" in e for e in decide.validate_state(state))
+
+    def test_summary_length_capped(self):
+        state = self._state()
+        state["revision"]["summary"] = "x" * 501
+        assert any("revision.summary" in e for e in decide.validate_state(state))
+
+    def test_revision_summary_secret_pattern_is_redacted(self):
+        state = self._state()
+        state["revision"]["summary"] = "found key sk-abcdef1234567890 in config"
+        redacted, count = decide.redact(state)
+        assert "sk-abcdef1234567890" not in redacted["revision"]["summary"]
+        assert count == 1
 
 
 class TestBuildRequest:
@@ -753,6 +809,8 @@ def _thresholds():
         "review": 0.60,
         "min_gap": 0.15,
         "human_preference": 0.70,
+        "sufficiency": 0.60,
+        "blocker_confidence": 0.50,
     }
 
 
@@ -884,6 +942,79 @@ class TestResolve:
         assert resolution["rule"] == "choice_score_disagreement"
 
 
+class TestResolveSufficiencyGate:
+    def _run(self, state=None, **answer_kwargs):
+        state = state or _valid_state()
+        answers = make_answers(state, **answer_kwargs)
+        parsed = decide.parse_answers(answers_body(answers), state)
+        return decide.resolve(state, parsed, _thresholds())
+
+    def test_insufficient_evidence_blocks_auto_select(self):
+        resolution = self._run(choice="option_a", confidence=0.95,
+                               sufficiency=0.2, blocker="facts_missing",
+                               blocker_confidence=0.8)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "evidence_insufficient"
+        assert resolution["selected_option"] is None
+        assert resolution["blocker_class"] == "facts_missing"
+        assert resolution["blocker_confidence"] == 0.8
+        assert resolution["evidence_sufficiency"] == 0.2
+
+    def test_every_blocker_class_blocks_auto_select(self):
+        for blocker in decide.BLOCKER_CLASSES:
+            resolution = self._run(confidence=0.95, sufficiency=0.1,
+                                   blocker=blocker, blocker_confidence=0.9)
+            assert resolution["decision"] == "ASK_USER", blocker
+            assert resolution["blocker_class"] == blocker
+
+    def test_low_blocker_confidence_falls_back_to_legacy_rules(self):
+        resolution = self._run(choice="option_a", confidence=0.95,
+                               sufficiency=0.2, blocker_confidence=0.3)
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["rule"] == "confidence"
+        assert resolution["blocker_class"] is None
+
+    def test_sufficient_evidence_skips_gate(self):
+        resolution = self._run(choice="option_a", confidence=0.95,
+                               sufficiency=0.9)
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["blocker_class"] is None
+
+    def test_human_preference_rule_precedes_gate(self):
+        resolution = self._run(noul=0.9, confidence=0.95, sufficiency=0.1,
+                               blocker="user_preference_unknown",
+                               blocker_confidence=0.9)
+        assert resolution["rule"] == "human_preference"
+
+    def test_preference_blocker_ignores_revision(self):
+        state = _valid_state()
+        state["revision"] = {"round": 1, "action": "investigation",
+                             "summary": "checked the repository"}
+        resolution = self._run(state=state, confidence=0.95, sufficiency=0.1,
+                               blocker="user_preference_unknown",
+                               blocker_confidence=0.9)
+        assert resolution["rule"] == "evidence_insufficient"
+
+    def test_revision_exhausts_investigation(self):
+        state = _valid_state()
+        state["revision"] = {"round": 1, "action": "investigation",
+                             "summary": "checked the repository"}
+        resolution = self._run(state=state, confidence=0.95, sufficiency=0.1,
+                               blocker="facts_missing", blocker_confidence=0.9)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "investigation_exhausted"
+        assert resolution["blocker_class"] == "facts_missing"
+
+    def test_revision_with_sufficient_evidence_selects_normally(self):
+        state = _valid_state()
+        state["revision"] = {"round": 1, "action": "material_fix",
+                             "summary": "rebalanced descriptions"}
+        resolution = self._run(state=state, choice="option_a",
+                               confidence=0.95, sufficiency=0.9)
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["rule"] == "confidence"
+
+
 class TestLogging:
     def test_default_log_path_under_home(self, tmp_path, monkeypatch):
         import pathlib
@@ -918,6 +1049,8 @@ class TestLogging:
             "confidence": 0.9,
             "human_preference_probability": 0.1,
             "score_summary": {"option_a": {"fit": 1.0, "composite": 1.0}},
+            "evidence_sufficiency": 0.9,
+            "blocker_class": None,
             "model": "jev-test",
         }
         record = decide.build_log_record(state, output, 812)
@@ -930,6 +1063,8 @@ class TestLogging:
             "choice_probabilities",
             "choice_confidence",
             "human_preference_probability",
+            "evidence_sufficiency",
+            "blocker_class",
             "resolution",
             "model",
             "latency_ms",
@@ -1167,6 +1302,35 @@ class TestMain:
         assert "warning" in captured.err
         output = json.loads(captured.out)
         assert output["decision"] == "SELECT_OPTION"
+
+    def test_sufficiency_flags_plumb_through(self, tmp_path, monkeypatch, capsys):
+        state = _valid_state()
+        answers = make_answers(state, choice="option_a", confidence=0.95,
+                               sufficiency=0.55, blocker="facts_missing",
+                               blocker_confidence=0.9)
+        self._patch_api(monkeypatch, answers)
+        self._patch_log(monkeypatch, tmp_path)
+        state_file = self._write_state(tmp_path, state)
+        # Default threshold 0.60 -> gate fires (0.55 < 0.60).
+        decide.main([f"--state-file={state_file}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["rule"] == "evidence_insufficient"
+        # Raised threshold 0.50 -> gate stays closed, legacy rules select.
+        self._patch_api(monkeypatch, answers)
+        decide.main([f"--state-file={state_file}", "--sufficiency", "0.5"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "SELECT_OPTION"
+
+    def test_invalid_revision_is_insufficient_options(self, tmp_path, monkeypatch,
+                                                      capsys):
+        state = _valid_state()
+        state["revision"] = {"round": 2, "action": "investigation",
+                             "summary": "second attempt"}
+        self._patch_log(monkeypatch, tmp_path)
+        decide.main([f"--state-file={self._write_state(tmp_path, state)}"])
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "INSUFFICIENT_OPTIONS"
+        assert "revision.round" in output["detail"]
 
 
 class TestCliContractViaSubprocess:
