@@ -570,7 +570,8 @@ def parse_answers(body: bytes, state: dict) -> dict:
         raise ProviderError(
             f"response is not valid JSON ({type(error).__name__})"
         ) from None
-    document, _ = redact(document)
+    # Project only validated protocol values below; never retain response text or
+    # metadata. Recursive key redaction would corrupt legal state identifiers.
     answers = document.get("answers") if isinstance(document, dict) else None
     if not isinstance(answers, dict):
         raise ProviderError("response has no answers object")
@@ -672,6 +673,9 @@ def parse_answers(body: bytes, state: dict) -> dict:
                 raise ProviderError(
                     f"{name}.probabilities must cover rubric levels exactly"
                 )
+            for level, probability in level_probabilities.items():
+                _require_number(probability, 0.0, 1.0,
+                                f"{name}.probabilities[{level}]")
             scores.setdefault(criterion["id"], {})[alternative["id"]] = score
 
     return {

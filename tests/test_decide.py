@@ -1880,3 +1880,126 @@ def test_capture_rejects_invalid_threshold_settings(value, tmp_path, monkeypatch
         decide.main(["--state-file", str(state_file), "--capture-evaluation",
                      f"--sufficiency={value}"])
     assert error.value.code == 2
+
+
+class TestTypedResponseIdentifiers:
+    def test_saved_authentication_state_scores_preserve_credential_id(self):
+        state_path = (Path(__file__).resolve().parents[1] / "evals" / "results"
+                      / "hard-constraints-calibration-2026-10-01" / "final" / "full_flow"
+                      / "authentication" / "autarch-state.json")
+        state = json.loads(state_path.read_text())
+        assert decide.validate_state(state) == []
+        evaluated, _, early = decide.check_constraints(state)
+        assert early is None
+        parsed = decide.parse_answers(answers_body(make_answers(evaluated)), evaluated)
+        assert parsed["scores"]["credential_and_session_security"] == {
+            "server_session_cookie": 2.0,
+            "stateless_jwt_bearer": 1.0,
+            "http_basic_per_request": 1.0,
+        }
+
+    @pytest.mark.parametrize("keyword", ["credential", "password", "token", "api_key"])
+    @pytest.mark.parametrize("location", ["criterion", "alternative"])
+    def test_legal_keyword_ids_preserve_numeric_protocol_fields(self, keyword, location):
+        state = _valid_state()
+        if location == "criterion":
+            state["criteria"][0]["id"] = keyword + "_fit"
+        else:
+            state["alternatives"][0]["id"] = keyword + "_option"
+        assert decide.validate_state(state) == []
+        evaluated, _, early = decide.check_constraints(state)
+        assert early is None
+        parsed = decide.parse_answers(answers_body(make_answers(evaluated)), evaluated)
+        if location == "criterion":
+            assert parsed["scores"][keyword + "_fit"] == {"option_a": 2.0, "option_b": 1.0}
+        else:
+            assert parsed["choice"] == keyword + "_option"
+            assert parsed["probabilities"] == {keyword + "_option": 0.85, "option_b": 0.15}
+            assert parsed["scores"]["fit"] == {keyword + "_option": 2.0, "option_b": 1.0}
+
+    def test_response_metadata_and_free_text_never_enter_typed_projection(self):
+        state = _valid_state()
+        answers = make_answers(state)
+        secret = "sk-syntheticsecretvalue123"
+        answers["best_option"].update(note=secret, credentials={"api_key": secret})
+        answers["score__fit__option_a"].update(explanation=secret, password=secret)
+        answers["unrequested"] = {"type": "score", "score": secret}
+        body = json.dumps({"model": secret, "metadata": {"authorization": secret},
+                           "answers": answers}).encode()
+        parsed = decide.parse_answers(body, state)
+        assert parsed == {
+            "human_preference": 0.1, "choice": "option_a", "confidence": 0.9,
+            "probabilities": {"option_a": 0.85, "option_b": 0.15},
+            "scores": {"fit": {"option_a": 2.0, "option_b": 1.0}},
+            "evidence_sufficiency": 0.9, "blocker_class": "facts_missing", "blocker_confidence": 0.9,
+        }
+        assert secret not in json.dumps(parsed)
+
+    @pytest.mark.parametrize("answer_name,field,key", [
+        ("requires_human_preference", "noul", None),
+        ("best_option", "confidence", None),
+        ("best_option", "probabilities", "option_a"),
+        ("evidence_sufficiency", "noul", None),
+        ("blocker_class", "confidence", None),
+        ("blocker_class", "probabilities", "facts_missing"),
+        ("score__fit__option_a", "score", None),
+        ("score__fit__option_a", "confidence", None),
+        ("score__fit__option_a", "probabilities", "0"),
+    ])
+    def test_secret_valued_numeric_fields_raise_without_exposing_value(self, answer_name, field, key):
+        state = _valid_state()
+        answers = make_answers(state)
+        secret = "sk-syntheticsecretvalue123"
+        if key is None:
+            answers[answer_name][field] = secret
+        else:
+            answers[answer_name][field][key] = secret
+        with pytest.raises(decide.ProviderError) as error:
+            decide.parse_answers(answers_body(answers), state)
+        assert secret not in str(error.value)
+        assert "out of range" in str(error.value)
+
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), True, -0.01, 1.01])
+    def test_score_rubric_probabilities_require_bounded_finite_numbers(self, value):
+        state = _valid_state()
+        answers = make_answers(state)
+        answers["score__fit__option_a"]["probabilities"]["0"] = value
+        with pytest.raises(decide.ProviderError):
+            decide.parse_answers(answers_body(answers), state)
+
+    def test_main_preserves_keyword_scores_and_excludes_secret_response_metadata(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        state = _valid_state()
+        state["criteria"][0]["id"] = "credential_fit"
+        secret = "sk-syntheticsecretvalue123"
+        state["environment"]["db_password"] = secret
+        state["evidence"].append("configured credential " + secret)
+        evaluated, _, early = decide.check_constraints(state)
+        assert early is None
+        answers = make_answers(evaluated)
+        answers["score__credential_fit__option_a"].update(note=secret, api_key=secret)
+        answers["best_option"].update(explanation=secret)
+        body = json.dumps({"model": secret, "metadata": {"password": secret},
+                           "answers": answers}).encode()
+        sent = []
+        def offline_response(payload, endpoint, timeout):
+            sent.append(payload)
+            return 200, body
+        state_file = tmp_path / "state.json"
+        state_file.write_text(json.dumps(state))
+        log_path = tmp_path / "decisions.jsonl"
+        monkeypatch.setenv("TYPESAFE_API_KEY", "offline-test-key")
+        monkeypatch.setattr(decide, "send_request", offline_response)
+        monkeypatch.setattr(decide, "default_log_path", lambda: log_path)
+        assert decide.main(["--state-file", str(state_file), "--capture-evaluation"]) == 0
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert output["decision"] == "SELECT_OPTION"
+        assert output["evaluation_snapshot"]["parsed"]["scores"]["credential_fit"] == {
+            "option_a": 2.0, "option_b": 1.0,
+        }
+        assert secret not in json.dumps(sent)
+        assert secret not in captured.out + captured.err + log_path.read_text()
+        assert "explanation" not in output["evaluation_snapshot"]["parsed"]
+        assert json.loads(log_path.read_text())["resolution"] == "SELECT_OPTION"
