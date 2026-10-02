@@ -1,0 +1,606 @@
+{
+  "groups": {
+    "constraint_clear/phase1": {
+      "confidence": {
+        "values": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "missing": 0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.84,
+          0.85,
+          0.85,
+          0.83,
+          0.85,
+          0.83,
+          0.91,
+          0.91,
+          0.9,
+          0.93,
+          0.93,
+          0.93,
+          0.9,
+          0.9,
+          0.9
+        ],
+        "missing": 0,
+        "min": 0.83,
+        "max": 0.93
+      },
+      "human_preference": {
+        "values": [
+          0.32,
+          0.34,
+          0.33,
+          0.27,
+          0.27,
+          0.27,
+          0.22,
+          0.21,
+          0.22,
+          0.21,
+          0.22,
+          0.21,
+          0.28,
+          0.28,
+          0.3
+        ],
+        "missing": 0,
+        "min": 0.21,
+        "max": 0.34
+      },
+      "blocker_confidence": {
+        "values": [
+          0.35,
+          0.36,
+          0.42,
+          0.1,
+          0.13,
+          0.13,
+          0.14,
+          0.2,
+          0.26,
+          0.15,
+          0.1,
+          0.11,
+          0.38,
+          0.33,
+          0.33
+        ],
+        "missing": 0,
+        "min": 0.1,
+        "max": 0.42
+      },
+      "blocker_class": {
+        "facts_missing": 11,
+        "user_preference_unknown": 1,
+        "balanced_tie": 2,
+        "material_bias": 1
+      },
+      "runs": 15,
+      "unavailable": 0
+    },
+    "unknown/phase1": {
+      "confidence": {
+        "values": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          0.99,
+          0.99,
+          0.99,
+          0.99,
+          0.99,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "missing": 0,
+        "min": 0.99,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.85,
+          0.85,
+          0.84,
+          0.87,
+          0.87,
+          0.87,
+          0.87,
+          0.87,
+          0.86,
+          0.82,
+          0.82,
+          0.82,
+          0.85,
+          0.85,
+          0.86,
+          0.88,
+          0.87,
+          0.87
+        ],
+        "missing": 0,
+        "min": 0.82,
+        "max": 0.88
+      },
+      "human_preference": {
+        "values": [
+          0.32,
+          0.32,
+          0.31,
+          0.29,
+          0.28,
+          0.3,
+          0.31,
+          0.32,
+          0.3,
+          0.29,
+          0.29,
+          0.3,
+          0.23,
+          0.25,
+          0.25,
+          0.24,
+          0.24,
+          0.24
+        ],
+        "missing": 0,
+        "min": 0.23,
+        "max": 0.32
+      },
+      "blocker_confidence": {
+        "values": [
+          0.39,
+          0.37,
+          0.45,
+          0.51,
+          0.47,
+          0.48,
+          0.38,
+          0.37,
+          0.38,
+          0.1,
+          0.12,
+          0.1,
+          0.11,
+          0.15,
+          0.1,
+          0.15,
+          0.2,
+          0.11
+        ],
+        "missing": 0,
+        "min": 0.1,
+        "max": 0.51
+      },
+      "blocker_class": {
+        "facts_missing": 10,
+        "balanced_tie": 8
+      },
+      "runs": 18,
+      "unavailable": 0
+    },
+    "evidence_removed/phase1": {
+      "confidence": {
+        "values": [
+          1.0,
+          1.0,
+          1.0,
+          0.99,
+          0.99,
+          1.0
+        ],
+        "missing": 0,
+        "min": 0.99,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.82,
+          0.82,
+          0.82,
+          0.81,
+          0.82,
+          0.82
+        ],
+        "missing": 0,
+        "min": 0.81,
+        "max": 0.82
+      },
+      "human_preference": {
+        "values": [
+          0.33,
+          0.34,
+          0.34,
+          0.31,
+          0.31,
+          0.29
+        ],
+        "missing": 0,
+        "min": 0.29,
+        "max": 0.34
+      },
+      "blocker_confidence": {
+        "values": [
+          0.4,
+          0.4,
+          0.42,
+          0.11,
+          0.11,
+          0.12
+        ],
+        "missing": 0,
+        "min": 0.11,
+        "max": 0.42
+      },
+      "blocker_class": {
+        "facts_missing": 3,
+        "balanced_tie": 3
+      },
+      "runs": 6,
+      "unavailable": 0
+    },
+    "info_missing/phase1": {
+      "confidence": {
+        "values": [
+          0.52,
+          0.43,
+          0.46,
+          0.96,
+          0.98,
+          0.97,
+          0.76,
+          0.85,
+          0.84,
+          1.0,
+          1.0,
+          1.0,
+          0.33,
+          0.33,
+          0.32
+        ],
+        "missing": 0,
+        "min": 0.32,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.36,
+          0.35,
+          0.37,
+          0.37,
+          0.4,
+          0.39,
+          0.22,
+          0.22,
+          0.23,
+          0.41,
+          0.44,
+          0.42,
+          0.35,
+          0.33,
+          0.34
+        ],
+        "missing": 0,
+        "min": 0.22,
+        "max": 0.44
+      },
+      "human_preference": {
+        "values": [
+          0.6,
+          0.58,
+          0.61,
+          0.68,
+          0.66,
+          0.66,
+          0.57,
+          0.56,
+          0.57,
+          0.67,
+          0.66,
+          0.67,
+          0.7,
+          0.69,
+          0.68
+        ],
+        "missing": 0,
+        "min": 0.56,
+        "max": 0.7
+      },
+      "blocker_confidence": {
+        "values": [
+          0.63,
+          0.59,
+          0.55,
+          0.61,
+          0.6,
+          0.6,
+          0.99,
+          0.99,
+          0.99,
+          0.27,
+          0.26,
+          0.24,
+          0.2,
+          0.15,
+          0.19
+        ],
+        "missing": 0,
+        "min": 0.15,
+        "max": 0.99
+      },
+      "blocker_class": {
+        "facts_missing": 12,
+        "balanced_tie": 3
+      },
+      "runs": 15,
+      "unavailable": 0
+    },
+    "preference_needed/phase1": {
+      "confidence": {
+        "values": [
+          1.0,
+          1.0,
+          1.0,
+          0.05,
+          0.06,
+          0.01,
+          0.5,
+          0.49,
+          0.5,
+          0.69,
+          0.7,
+          0.74,
+          0.11,
+          0.11,
+          0.04
+        ],
+        "missing": 0,
+        "min": 0.01,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.58,
+          0.55,
+          0.55,
+          0.29,
+          0.28,
+          0.28,
+          0.16,
+          0.16,
+          0.16,
+          0.47,
+          0.46,
+          0.48,
+          0.28,
+          0.28,
+          0.27
+        ],
+        "missing": 0,
+        "min": 0.16,
+        "max": 0.58
+      },
+      "human_preference": {
+        "values": [
+          0.62,
+          0.6,
+          0.6,
+          0.78,
+          0.79,
+          0.78,
+          0.85,
+          0.85,
+          0.84,
+          0.69,
+          0.69,
+          0.67,
+          0.76,
+          0.77,
+          0.79
+        ],
+        "missing": 0,
+        "min": 0.6,
+        "max": 0.85
+      },
+      "blocker_confidence": {
+        "values": [
+          0.29,
+          0.28,
+          0.3,
+          0.51,
+          0.48,
+          0.5,
+          0.62,
+          0.58,
+          0.55,
+          0.45,
+          0.37,
+          0.38,
+          0.5,
+          0.47,
+          0.57
+        ],
+        "missing": 0,
+        "min": 0.28,
+        "max": 0.62
+      },
+      "blocker_class": {
+        "balanced_tie": 9,
+        "user_preference_unknown": 6
+      },
+      "runs": 15,
+      "unavailable": 0
+    },
+    "loop_resolvable/phase1": {
+      "confidence": {
+        "values": [
+          0.98,
+          0.99,
+          0.98,
+          0.97,
+          0.98,
+          0.97,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "missing": 0,
+        "min": 0.97,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.24,
+          0.23,
+          0.23,
+          0.38,
+          0.4,
+          0.4,
+          0.87,
+          0.87,
+          0.86
+        ],
+        "missing": 0,
+        "min": 0.23,
+        "max": 0.87
+      },
+      "human_preference": {
+        "values": [
+          0.73,
+          0.72,
+          0.72,
+          0.65,
+          0.66,
+          0.67,
+          0.24,
+          0.25,
+          0.25
+        ],
+        "missing": 0,
+        "min": 0.24,
+        "max": 0.73
+      },
+      "blocker_confidence": {
+        "values": [
+          0.71,
+          0.67,
+          0.68,
+          0.62,
+          0.62,
+          0.6,
+          0.2,
+          0.26,
+          0.22
+        ],
+        "missing": 0,
+        "min": 0.2,
+        "max": 0.71
+      },
+      "blocker_class": {
+        "facts_missing": 9
+      },
+      "runs": 9,
+      "unavailable": 0
+    },
+    "loop_resolvable/phase2": {
+      "confidence": {
+        "values": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "missing": 0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "evidence_sufficiency": {
+        "values": [
+          0.8,
+          0.81,
+          0.81,
+          0.82,
+          0.83,
+          0.82,
+          0.9,
+          0.89,
+          0.89
+        ],
+        "missing": 0,
+        "min": 0.8,
+        "max": 0.9
+      },
+      "human_preference": {
+        "values": [
+          0.41,
+          0.41,
+          0.4,
+          0.34,
+          0.35,
+          0.35,
+          0.25,
+          0.25,
+          0.24
+        ],
+        "missing": 0,
+        "min": 0.24,
+        "max": 0.41
+      },
+      "blocker_confidence": {
+        "values": [
+          0.38,
+          0.35,
+          0.43,
+          0.31,
+          0.24,
+          0.29,
+          0.27,
+          0.26,
+          0.26
+        ],
+        "missing": 0,
+        "min": 0.24,
+        "max": 0.43
+      },
+      "blocker_class": {
+        "facts_missing": 9
+      },
+      "runs": 9,
+      "unavailable": 0
+    }
+  },
+  "replayable": 87,
+  "runs": 87
+}

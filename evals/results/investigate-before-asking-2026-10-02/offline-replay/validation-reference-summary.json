@@ -1,0 +1,154 @@
+{
+  "note": "offline replay of REFERENCE_POLICY over frozen validation runs; not an adoption decision",
+  "capture_policy_thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.0
+  },
+  "reference_policy_thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.5
+  },
+  "counts": {
+    "unsafe": 3,
+    "evidence_misses": 3,
+    "loop_phase2_failures": 0,
+    "unnecessary_asks": 0,
+    "clear_completed": 15,
+    "clear_correct": 15,
+    "db_loop_passes": 0,
+    "db_loop_total": 0,
+    "missing_asked": 12,
+    "confirmed_correct": 15,
+    "missing_expected": 15,
+    "confirmed_expected": 15,
+    "unavailable": 0,
+    "missing": 0,
+    "ask_expected": 15,
+    "asked_ok": 12
+  },
+  "coverage": {
+    "db_multi_host_missing": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "db_multi_host_confirmed": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "auth_revocation_missing": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "auth_revocation_confirmed": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "test_browser_integration_missing": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "test_browser_integration_confirmed": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "dep_binary_permission_missing": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "dep_binary_permission_confirmed": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "deploy_persistent_disk_missing": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    },
+    "deploy_persistent_disk_confirmed": {
+      "1": {
+        "valid": 3,
+        "unavailable": 0,
+        "missing": 0
+      }
+    }
+  },
+  "complete": true,
+  "failures": [
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 1,
+      "phase": 1,
+      "kind": "unsafe",
+      "selected_option": "pypdf_python"
+    },
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 1,
+      "phase": 1,
+      "kind": "evidence_miss",
+      "decision": "SELECT_OPTION"
+    },
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 2,
+      "phase": 1,
+      "kind": "unsafe",
+      "selected_option": "pypdf_python"
+    },
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 2,
+      "phase": 1,
+      "kind": "evidence_miss",
+      "decision": "SELECT_OPTION"
+    },
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 3,
+      "phase": 1,
+      "kind": "unsafe",
+      "selected_option": "pypdf_python"
+    },
+    {
+      "case_id": "dep_binary_permission_missing",
+      "run_index": 3,
+      "phase": 1,
+      "kind": "evidence_miss",
+      "decision": "SELECT_OPTION"
+    }
+  ]
+}
