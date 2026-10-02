@@ -7,6 +7,8 @@ from pathlib import Path
 
 import decide
 
+DECIDE_SCRIPT = Path(decide.__file__)
+
 
 def test_module_exposes_constants():
     assert decide.REDACTED == "[REDACTED]"
@@ -1155,6 +1157,29 @@ class TestResolveSufficiencyGate:
         assert resolution["blocker_confidence"] == 0.8
         assert resolution["evidence_sufficiency"] == 0.2
 
+    def test_sufficiency_alone_triggers_gate(self):
+        # deployment full-flow pattern: sufficiency .54, blocker_confidence .22
+        resolution = self._run(choice="option_a", confidence=0.95,
+                               sufficiency=0.54, blocker_confidence=0.22)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "evidence_insufficient"
+        assert resolution["blocker_class"] == "facts_missing"
+
+    def test_low_confidence_falls_back_to_investigation(self):
+        resolution = self._run(confidence=0.95, sufficiency=0.4,
+                               blocker="user_preference_unknown",
+                               blocker_confidence=0.22)
+        assert resolution["rule"] == "evidence_insufficient"
+        assert resolution["blocker_class"] == "user_preference_unknown"
+
+    def test_low_confidence_with_revision_is_exhausted(self):
+        state = _valid_state()
+        state["revision"] = {"round": 1, "action": "investigation",
+                             "summary": "checked the repository"}
+        resolution = self._run(state=state, confidence=0.95, sufficiency=0.4,
+                               blocker_confidence=0.3)
+        assert resolution["rule"] == "investigation_exhausted"
+
     def test_every_blocker_class_blocks_auto_select(self):
         for blocker in decide.BLOCKER_CLASSES:
             resolution = self._run(confidence=0.95, sufficiency=0.1,
@@ -1162,33 +1187,42 @@ class TestResolveSufficiencyGate:
             assert resolution["decision"] == "ASK_USER", blocker
             assert resolution["blocker_class"] == blocker
 
-    def test_low_blocker_confidence_falls_back_to_legacy_rules(self):
-        resolution = self._run(choice="option_a", confidence=0.95,
-                               sufficiency=0.2, blocker_confidence=0.3)
-        assert resolution["decision"] == "SELECT_OPTION"
-        assert resolution["rule"] == "confidence"
-        assert resolution["blocker_class"] is None
+    def test_intent_blocker_routes_to_human_preference(self):
+        resolution = self._run(confidence=0.95, sufficiency=0.2,
+                               blocker="user_preference_unknown",
+                               blocker_confidence=0.9)
+        assert resolution["decision"] == "ASK_USER"
+        assert resolution["rule"] == "human_preference"
+        assert resolution["blocker_class"] == "user_preference_unknown"
+        assert resolution["blocker_confidence"] == 0.9
 
-    def test_sufficient_evidence_skips_gate(self):
-        resolution = self._run(choice="option_a", confidence=0.95,
-                               sufficiency=0.9)
-        assert resolution["decision"] == "SELECT_OPTION"
-        assert resolution["blocker_class"] is None
-
-    def test_human_preference_rule_precedes_gate(self):
-        resolution = self._run(noul=0.9, confidence=0.95, sufficiency=0.1,
+    def test_intent_blocker_ignores_revision(self):
+        state = _valid_state()
+        state["revision"] = {"round": 1, "action": "investigation",
+                             "summary": "checked the repository"}
+        resolution = self._run(state=state, confidence=0.95, sufficiency=0.2,
                                blocker="user_preference_unknown",
                                blocker_confidence=0.9)
         assert resolution["rule"] == "human_preference"
 
-    def test_preference_blocker_ignores_revision(self):
-        state = _valid_state()
-        state["revision"] = {"round": 1, "action": "investigation",
-                             "summary": "checked the repository"}
-        resolution = self._run(state=state, confidence=0.95, sufficiency=0.1,
-                               blocker="user_preference_unknown",
-                               blocker_confidence=0.9)
+    def test_gate_fires_before_human_preference_at_high_noul(self):
+        # auth_loop pattern: high human preference AND investigable facts missing
+        resolution = self._run(noul=0.95, confidence=0.99, sufficiency=0.3,
+                               blocker="facts_missing", blocker_confidence=0.8)
         assert resolution["rule"] == "evidence_insufficient"
+
+    def test_sufficient_evidence_high_noul_asks_preference(self):
+        # deploy_preference_needed pattern
+        resolution = self._run(noul=0.9, confidence=0.99, sufficiency=0.9)
+        assert resolution["rule"] == "human_preference"
+        assert resolution["blocker_class"] is None
+
+    def test_human_preference_via_gate_reports_blocker(self):
+        resolution = self._run(noul=0.9, confidence=0.95, sufficiency=0.2,
+                               blocker="balanced_tie", blocker_confidence=0.8)
+        assert resolution["rule"] == "human_preference"
+        assert resolution["blocker_class"] == "balanced_tie"
+        assert resolution["blocker_confidence"] == 0.8
 
     def test_revision_exhausts_investigation(self):
         state = _valid_state()
@@ -1208,6 +1242,20 @@ class TestResolveSufficiencyGate:
                                confidence=0.95, sufficiency=0.9)
         assert resolution["decision"] == "SELECT_OPTION"
         assert resolution["rule"] == "confidence"
+
+    def test_sufficient_evidence_skips_gate(self):
+        resolution = self._run(choice="option_a", confidence=0.95,
+                               sufficiency=0.9)
+        assert resolution["decision"] == "SELECT_OPTION"
+        assert resolution["blocker_class"] is None
+
+    def test_no_criteria_state_gates_before_scoring(self):
+        state = _valid_state()
+        state["criteria"] = []
+        resolution = self._run(state=state, confidence=0.95, sufficiency=0.2,
+                               blocker_confidence=0.8)
+        assert resolution["rule"] == "evidence_insufficient"
+        assert resolution["score_summary"] is None
 
 
 class TestLogging:
@@ -1532,14 +1580,24 @@ class TestMain:
 
 class TestCliContractViaSubprocess:
     def test_missing_state_file_subprocess(self):
-        script = Path(decide.__file__)
         result = subprocess.run(
-            [sys.executable, str(script), "--state-file", "/nonexistent"],
+            [sys.executable, str(DECIDE_SCRIPT), "--state-file", "/nonexistent"],
             capture_output=True,
             text=True,
         )
         assert result.returncode == 2
         assert result.stdout == ""
+
+    def test_gate_order_flag_is_rejected(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        state_file.write_text(json.dumps(_valid_state()), encoding="utf-8")
+        completed = subprocess.run(
+            [sys.executable, str(DECIDE_SCRIPT), "--state-file", str(state_file),
+             "--gate-order", "human_first"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert completed.returncode == 2
+        assert "gate-order" in completed.stderr or "gate_order" in completed.stderr
 
 
 class TestDomainAgnostic:
@@ -1813,18 +1871,6 @@ class TestEvaluationCapture:
         }
         assert output["evaluation_snapshot"] is None
 
-    def test_gate_order_and_default(self):
-        state = _valid_state()
-        parsed = decide.parse_answers(answers_body(make_answers(
-            state, noul=0.9, sufficiency=0.2)), state)
-        assert decide.resolve(state, parsed, _thresholds())["rule"] == "human_preference"
-        assert decide.resolve(state, parsed, _thresholds(),
-                              gate_order="human_first")["rule"] == "human_preference"
-        assert decide.resolve(state, parsed, _thresholds(),
-                              gate_order="evidence_first")["rule"] == "evidence_insufficient"
-        with pytest.raises(ValueError, match="gate_order"):
-            decide.resolve(state, parsed, _thresholds(), gate_order="unknown")
-
     @pytest.mark.parametrize("capture", [False, True])
     def test_main_captures_only_validated_unrounded_values(
         self, capture, tmp_path, monkeypatch, capsys
@@ -1841,7 +1887,7 @@ class TestEvaluationCapture:
         monkeypatch.setattr(decide, "default_log_path", lambda: log_path)
         monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         monkeypatch.setattr(decide, "send_request", lambda *args: (200, answers_body(answers)))
-        args = ["--state-file", str(state_file), "--gate-order", "evidence_first"]
+        args = ["--state-file", str(state_file)]
         if capture:
             args.append("--capture-evaluation")
         assert decide.main(args) == 0
@@ -1853,17 +1899,18 @@ class TestEvaluationCapture:
         assert "evaluation_snapshot" not in record
         if capture:
             snapshot = output["evaluation_snapshot"]
-            assert set(snapshot) == {"schema_version", "parsed", "thresholds", "gate_order",
+            assert set(snapshot) == {"schema_version", "parsed", "thresholds",
                                      "evaluated_option_ids"}
             assert snapshot["schema_version"] == 1
-            assert snapshot["gate_order"] == "evidence_first"
             assert snapshot["thresholds"] == _thresholds()
             assert snapshot["evaluated_option_ids"] == ["option_a", "option_b"]
             assert snapshot["parsed"]["scores"]["fit"]["option_a"] == 1.23456789
             assert output["score_summary"]["option_a"]["fit"] == 0.6173
             assert "unused" not in snapshot["parsed"]
-            from calibrate_thresholds import replay_resolution
-            replayed = replay_resolution(state, snapshot, _thresholds(), "evidence_first")
+            # Replay the captured signals through the same policy: the
+            # snapshot must reproduce the emitted resolution exactly.
+            replayed = decide.resolve(evaluated, copy.deepcopy(snapshot["parsed"]),
+                                      _thresholds())
             for field in ("decision", "rule", "selected_option"):
                 assert replayed[field] == output[field]
             assert "sk-secretabcdefgh" not in json.dumps(output)

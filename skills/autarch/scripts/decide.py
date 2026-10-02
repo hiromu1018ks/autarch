@@ -101,7 +101,6 @@ DEFAULT_HUMAN_PREFERENCE = 0.70
 DEFAULT_SUFFICIENCY = 0.60
 DEFAULT_BLOCKER_CONFIDENCE = 0.50
 DEFAULT_TIMEOUT = 30
-GATE_ORDERS = ("human_first", "evidence_first")
 
 REVISION_ACTIONS = ("investigation", "material_fix")
 REVISION_SUMMARY_LIMIT = 500
@@ -721,10 +720,8 @@ def compute_score_summary(state: dict, parsed: dict, *, rounded: bool = True) ->
     return summary
 
 
-def resolve(state: dict, parsed: dict, thresholds: dict, *, gate_order="human_first") -> dict:
+def resolve(state: dict, parsed: dict, thresholds: dict) -> dict:
     """Apply the deterministic resolution policy (spec section 8)."""
-    if gate_order not in GATE_ORDERS:
-        raise ValueError("gate_order must be human_first or evidence_first")
     probabilities = parsed["probabilities"]
     confidence = parsed["confidence"]
     human_preference = parsed["human_preference"]
@@ -752,25 +749,16 @@ def resolve(state: dict, parsed: dict, thresholds: dict, *, gate_order="human_fi
     }
 
     human_gate = human_preference >= thresholds["human_preference"]
-    gate_fires = (
-        parsed["evidence_sufficiency"] < thresholds["sufficiency"]
-        and parsed["blocker_confidence"] >= thresholds["blocker_confidence"]
-    )
-    if human_gate and (gate_order == "human_first" or not gate_fires):
-        resolution["decision"] = "ASK_USER"
-        resolution["rule"] = "human_preference"
-        resolution["reason"] = (
-            "Jev indicates this decision depends on the user's personal "
-            "preference or intent; it must not be auto-selected."
-        )
-        return resolution
-
+    gate_fires = parsed["evidence_sufficiency"] < thresholds["sufficiency"]
     if gate_fires:
         blocker = parsed["blocker_class"]
         resolution["blocker_class"] = blocker
         resolution["blocker_confidence"] = parsed["blocker_confidence"]
+        investigates = blocker in ("facts_missing", "material_bias") or (
+            parsed["blocker_confidence"] < thresholds["blocker_confidence"]
+        )
         has_revision = isinstance(state.get("revision"), dict)
-        if has_revision and blocker in ("facts_missing", "material_bias"):
+        if investigates and has_revision:
             resolution["decision"] = "ASK_USER"
             resolution["rule"] = "investigation_exhausted"
             resolution["reason"] = (
@@ -778,7 +766,7 @@ def resolve(state: dict, parsed: dict, thresholds: dict, *, gate_order="human_fi
                 "evidence still does not support automatic selection; "
                 "returning the decision to the user."
             )
-        else:
+        elif investigates:
             resolution["decision"] = "ASK_USER"
             resolution["rule"] = "evidence_insufficient"
             resolution["reason"] = (
@@ -786,6 +774,22 @@ def resolve(state: dict, parsed: dict, thresholds: dict, *, gate_order="human_fi
                 f"(evidence sufficiency {parsed['evidence_sufficiency']:.2f}); "
                 "the evidence does not support automatic selection."
             )
+        else:
+            resolution["decision"] = "ASK_USER"
+            resolution["rule"] = "human_preference"
+            resolution["reason"] = (
+                "Jev indicates this decision depends on the user's personal "
+                "preference or intent; it must not be auto-selected."
+            )
+        return resolution
+
+    if human_gate:
+        resolution["decision"] = "ASK_USER"
+        resolution["rule"] = "human_preference"
+        resolution["reason"] = (
+            "Jev indicates this decision depends on the user's personal "
+            "preference or intent; it must not be auto-selected."
+        )
         return resolution
 
     choice_winner = parsed["choice"]
@@ -959,7 +963,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT)
-    parser.add_argument("--gate-order", choices=GATE_ORDERS, default="human_first")
     parser.add_argument("--capture-evaluation", action="store_true")
     args = parser.parse_args(argv)
 
@@ -1017,13 +1020,12 @@ def main(argv: list[str] | None = None) -> int:
         if not 200 <= status < 300:
             raise ProviderError(f"HTTP {status}")
         parsed = parse_answers(body, redacted_state)
-        resolution = resolve(redacted_state, parsed, thresholds, gate_order=args.gate_order)
+        resolution = resolve(redacted_state, parsed, thresholds)
         if args.capture_evaluation:
             resolution["evaluation_snapshot"] = {
                 "schema_version": 1,
                 "parsed": copy.deepcopy(parsed),
                 "thresholds": dict(thresholds),
-                "gate_order": args.gate_order,
                 "evaluated_option_ids": [a["id"] for a in redacted_state["alternatives"]],
             }
     except ProviderError as error:
