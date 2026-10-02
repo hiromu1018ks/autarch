@@ -81,6 +81,14 @@ only `A-Za-z0-9._-`, must not start with a symbol, must not contain `__`.
 
 ### Step 4 — Gather evidence
 
+Investigate before writing the state. Before you build the state JSON,
+check the repository, project documentation, and — when relevant —
+external documentation or web search for facts the comparison needs.
+Facts you can obtain by investigation belong in the state now;
+do not defer them to a post-evaluation investigation round. Only the
+user's own preference, plans, or intent is exempt:
+never investigate those — return them as a question.
+
 Collect only the context needed to compare the options (for coding
 decisions: repository structure, existing dependencies, configuration,
 requirements, constraints).
@@ -148,7 +156,23 @@ when mandatory requirements apply):
 When present, `hard_constraints` and `evidence_records` must be arrays,
 not null; non-empty constraints require `evidence_records`. Each constraint
 has `id`, non-empty `description`, and `assessments` covering exactly all
-original alternative IDs. Each record has `id` and the fields in Step 4.
+original alternative IDs.
+`assessments` must be an object keyed by option id, never an array:
+
+```json
+"hard_constraints": [
+  {
+    "id": "offline",
+    "description": "Must work fully offline.",
+    "assessments": {
+      "sqlite": {"status": "met", "evidence_ids": ["runtime_confirmation"]},
+      "json": {"status": "unknown", "evidence_ids": []}
+    }
+  }
+]
+```
+
+Each record has `id` and the fields in Step 4.
 Constraint IDs and evidence IDs follow the Step 3 ID rules and are unique
 within their respective arrays. See the complete runnable state example in
 [README.md](../../README.md#evidence-backed-hard-constraints).
@@ -221,6 +245,12 @@ Same as Step 9, but state the uncertainty first in one short sentence
 
 Do NOT repeat the original technical question. Dispatch on `rule` and
 `blocker_class`:
+
+The engine returns `evidence_insufficient` when the missing piece is
+investigable (blocker `facts_missing` or `material_bias`), and
+`human_preference` when what is missing is your intent (blocker
+`user_preference_unknown` or `balanced_tie`, or sufficient evidence with
+high preference dependence). Follow the rule below either way.
 
 All constraint verification, evidence investigation, and material repair
 use one shared revision round. If `revision` already exists, do not

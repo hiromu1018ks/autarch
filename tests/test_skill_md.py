@@ -103,3 +103,19 @@ class TestSkillMarkdown:
             "legacy path has no evidence-backed exclusion guarantee",
         ):
             assert instruction in text
+
+    def test_step4_requires_investigation_before_state(self):
+        text = _read()
+        assert "Investigate before writing the state" in text
+        assert "do not defer them to a" in text
+        assert "never investigate those" in text
+
+    def test_step6_shows_assessments_object_example(self):
+        text = _read()
+        assert '"assessments"' in text
+        assert "must be an object keyed by option id" in text
+
+    def test_step11_routes_intent_blockers_to_deciding_question(self):
+        text = _read()
+        assert "Blocker `user_preference_unknown` or `balanced_tie`" in text
+        assert "one deciding question" in text
