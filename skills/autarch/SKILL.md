@@ -247,10 +247,18 @@ Do NOT repeat the original technical question. Dispatch on `rule` and
 `blocker_class`:
 
 The engine returns `evidence_insufficient` when the missing piece is
-investigable (blocker `facts_missing` or `material_bias`), and
-`human_preference` when what is missing is your intent (blocker
-`user_preference_unknown` or `balanced_tie`, or sufficient evidence with
-high preference dependence). Follow the rule below either way.
+investigable (blocker `facts_missing` or `material_bias`) or when the
+blocker classification itself is below 0.50 confidence (the engine then
+treats the blocker as investigable), and `human_preference` when what is
+missing is your intent (blocker `user_preference_unknown` or
+`balanced_tie`, or sufficient evidence with high preference dependence).
+Follow the rule below either way.
+
+Dispatch on the `rule` first; the blocker class is secondary context.
+When the two disagree — an intent-class blocker under rule
+`evidence_insufficient` — the engine has fallen back to the investigation
+side because the blocker classification itself was below 0.50 confidence,
+so investigate.
 
 All constraint verification, evidence investigation, and material repair
 use one shared revision round. If `revision` already exists, do not
@@ -271,10 +279,12 @@ question about the user's intent, stop investigating and ask that one
 question instead. Follow Step 12 if the re-run returns
 `PROVIDER_UNAVAILABLE`; never call Jev again.
 
-**`evidence_insufficient`, blocker `facts_missing`, no `revision` in the
-state — investigate once, then re-run.** Check repository configuration,
-code, and documentation first; if the repository does not answer the
-question, consult external documentation or web search. This whole
+**Rule `evidence_insufficient`, no `revision`** — investigate once, then re-run.
+This rule covers blocker `facts_missing` and `material_bias`, and the
+engine's low-confidence fallback, which sends any blocker class here
+when its classification confidence is below 0.50. Check repository
+configuration, code, and documentation first; if the repository does not
+answer the question, consult external documentation or web search. This whole
 investigation is one round. Append each discovered fact to `evidence`
 as a string with its source noted in one short phrase (example:
 `"the app runs as a single local CLI tool (pyproject.toml, README)"`).
@@ -303,10 +313,9 @@ decide.py run: list what was confirmed (verified facts with sources)
 and what remains unverified, then ask the single deciding question as
 below.
 
-**Blocker `user_preference_unknown` or `balanced_tie`, or rule
-`human_preference`** — the decision depends on the user's taste,
-plans, or a deciding priority. Ask for that preference or priority
-directly instead of technical details.
+**Rule `human_preference`** — the decision depends on the user's taste,
+plans, or a deciding priority (typically blocker `user_preference_unknown` or `balanced_tie`).
+Ask for that preference or priority directly instead of technical details.
 
 **Any other `rule`** (`low_confidence`, `probability_gap`,
 `choice_score_disagreement`) — using `rule`, `score_summary`,

@@ -117,5 +117,12 @@ class TestSkillMarkdown:
 
     def test_step11_routes_intent_blockers_to_deciding_question(self):
         text = _read()
-        assert "Blocker `user_preference_unknown` or `balanced_tie`" in text
+        assert "(typically blocker `user_preference_unknown` or `balanced_tie`)" in text
         assert "one deciding question" in text
+
+    def test_step11_dispatches_on_rule_first_with_low_confidence_fallback(self):
+        text = _read()
+        assert "Dispatch on the `rule` first" in text
+        assert "below 0.50 confidence" in text
+        assert "**Rule `evidence_insufficient`, no `revision`**" in text
+        assert "**Rule `human_preference`**" in text

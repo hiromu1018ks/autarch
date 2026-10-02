@@ -105,5 +105,7 @@ full-flow は agent が新しい SKILL.md の問いに沿って state を構築�
 - deploy_loop の 3/3 は Task 7 改修後のケースでの実測で、旧ケースとの同条件比較ではない。auth_loop と db_loop はケース無変更。
 - full-flow は各シナリオ 1 回、5 件が分母。旧最終は評価可能 3 件で、率の差を品質の差として読めない。agent の出典が fixture の事実を実際に証明するか、推論と事実を分離できているかまで機械判定は保証しない。今回も state の最終形と agent 自身の報告からの手動確認にとどまる。
 - unknown 調査→再実行の経路は full-flow の 5 件で不発。条件トラック env_unknown_resolved や loop ケースの 2 段階成功は、runner が注入した調査の成功であり、agent が自発的に調査を起こす実測とは別である。
+- full-flow の ASK 4件の信号は intent 系 blocker(user_preference_unknown)・bconf 0.24–0.49 で、エンジン側では低 confidence の fallback 経路(rule evidence_insufficient)に該当する。修正前の SKILL.md Step 11 は blocker class を先に照合していたため、agent は調査をせず即座に問い直した。unknown 調査→再実行の経路が 5 件で不発だったのは、この文書とエンジンの食い違いが一因である。
+- Step 11 は rule を先に照合するよう SKILL.md を修正し、低 confidence fallback を明記した。本修正の live 効果は未再測で(再実行はしていない)、開いた留保として残す。
 - 費用・トークン数は runner の保存対象でなく未集計。decide.py 経由で `~/.autarch/decisions.jsonl` に追記されている(既定の動作)。
 - この少数ケースの結果を一般的な品質保証とはしない。
