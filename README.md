@@ -54,8 +54,8 @@ Decision material sent to Jev (question, alternatives, evidence, criteria) is al
 After input validation and hard-constraint checks, the Jev evaluation runs through these gates, in order:
 
 1. **Provider error** → `PROVIDER_UNAVAILABLE` — never auto-select on a failed/unusable API response
-2. **Human-preference gate** (Noul ≥ 0.70) → `ASK_USER` — if the decision depends on your taste or intent, Autarch refuses to choose even at high confidence
-3. **Evidence sufficiency** (< 0.60 with blocker confidence ≥ 0.50) → `ASK_USER` — investigate missing facts or repair biased material once; an existing revision exhausts that round. For preference or tie blockers, ask one deciding question.
+2. **Evidence sufficiency** (< 0.60) → `ASK_USER` — the blocker class routes the outcome: missing-but-investigable facts or biased material trigger one investigation/repair round; a user-preference or tie blocker asks one deciding question. A blocker classification below 0.50 confidence falls back to the investigation round.
+3. **Human-preference gate** (Noul ≥ 0.70 with sufficient evidence) → `ASK_USER` — if the decision depends on your taste or intent, Autarch refuses to choose even at high confidence
 4. **Choice/Score consistency** — if the Choice winner and the weighted Score winner disagree → `ASK_USER`
 5. **Probability gap** — if the top two options are within 0.15 of each other → `ASK_USER`
 6. **Confidence bands** — ≥ 0.85 → `SELECT_OPTION`, ≥ 0.60 → `SELECT_OPTION_WITH_CAUTION`, else → `ASK_USER`
@@ -200,7 +200,6 @@ python3 skills/autarch/scripts/decide.py --state-file state.json
 Defaults: `--model jev-latest`, `--auto-select 0.85`, `--review 0.60`,
 `--min-gap 0.15`, `--human-preference 0.70`, `--sufficiency 0.60`,
 `--blocker-confidence 0.50`, `--timeout 30`, and `--endpoint https://api.typesafe.ai`.
-`--gate-order` accepts the default `human_first` or `evidence_first`.
 `--capture-evaluation` includes unrounded numeric signals in `evaluation_snapshot` for offline policy replay against the same state.
 These evaluation options are not required for normal `/autarch` use.
 

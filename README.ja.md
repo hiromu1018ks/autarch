@@ -59,8 +59,8 @@ Jev に送る質問・候補・根拠・評価基準は、評価の一貫性を�
 入力と必須条件の検査後、Jev の評価結果を次の順で判定します。条件に当てはまった時点で、その結果を返します。
 
 1. **Jev のエラー**: API が失敗した、または有効な応答を返さなかった場合は `PROVIDER_UNAVAILABLE`。自動選択はしません。
-2. **人の判断が必要か**: 人の好みや意向が必要だと Jev が判定し、その確率が `0.70` 以上なら `ASK_USER`。
-3. **根拠は十分か**: 根拠の充足度が `0.60` 未満で、阻害要因の確信度が `0.50` 以上なら `ASK_USER`。不足する事実の調査や判断材料の修正は1回までで、既に revision があれば質問を返します。好みや同点が阻害要因なら、判断に必要な質問を1つ返します。
+2. **根拠の充足度**(< 0.60)→ `ASK_USER` — blocker 分類が行き先を決めます。調査で取得できる事実の欠落や資料の偏りは1回の調査・修復ラウンドへ、ユーザーの意向・優先順位の欠落は1つの意思決定質問へ振り分けます。ブロッカー分類の confidence が 0.50 未満の場合は調査ラウンドへフォールバックします。
+3. **ユーザー意向ゲート**(Noul ≥ 0.70 かつ根拠十分)→ `ASK_USER` — 決定があなたの好み・意向に依存する場合、confidence が高くても自動選択しません
 4. **評価結果が一致するか**: Choice の1位と、評価基準を重み付けして集計した Score の1位が異なる場合は `ASK_USER`。
 5. **上位候補に差があるか**: 1位と2位の確率差が `0.15` 未満なら `ASK_USER`。
 6. **確信度は十分か**: 確信度が `0.85` 以上なら `SELECT_OPTION`、`0.60` 以上なら `SELECT_OPTION_WITH_CAUTION`、それ未満なら `ASK_USER`。
@@ -202,9 +202,8 @@ python3 skills/autarch/scripts/decide.py --state-file state.json
 既定値は `--model jev-latest`、`--auto-select 0.85`、`--review 0.60`、
 `--min-gap 0.15`、`--human-preference 0.70`、`--sufficiency 0.60`、
 `--blocker-confidence 0.50`、`--timeout 30`、`--endpoint https://api.typesafe.ai` です。
-`--gate-order` は既定の `human_first` と、根拠の充足度を先に見る `evidence_first` を指定できます。
 `--capture-evaluation` を付けると、丸め前の数値を `evaluation_snapshot` に出力し、同じ入力と保存値で閾値を比較できます。
-どちらも評価・比較用のオプションで、通常の `/autarch` に指定する必要はありません。
+このオプションは評価・比較用のもので、通常の `/autarch` に指定する必要はありません。
 
 - **入力**: 判断内容を記した JSON ファイル。`goal`、`question`、2〜5件の `alternatives` が必要です。`criteria` は省略でき、指定する場合は0〜8件です。
 - **標準出力**: 判定結果を表す JSON オブジェクトを1つ出力します。`decision`、`rule`、`selected_option`、`confidence`、`probabilities`、`score_summary` などが含まれます。
