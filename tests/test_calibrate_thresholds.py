@@ -6,11 +6,11 @@ import decide
 from test_decide import _valid_state, _constraint_state, _thresholds, make_answers, answers_body
 
 
-def replay(state, snapshot, thresholds=None, gate_order="human_first"):
+def replay(state, snapshot, thresholds=None):
     # Import in the call so missing functionality produces focused test failures.
     import calibrate_thresholds
     return calibrate_thresholds.replay_resolution(
-        state, snapshot, thresholds or _thresholds(), gate_order)
+        state, snapshot, thresholds or _thresholds())
 
 
 def snapshot_for(state, **answers_kwargs):
@@ -18,7 +18,6 @@ def snapshot_for(state, **answers_kwargs):
     assert early is None
     parsed = decide.parse_answers(answers_body(make_answers(evaluated, **answers_kwargs)), evaluated)
     return {"schema_version": 1, "parsed": parsed, "thresholds": _thresholds(),
-            "gate_order": "human_first",
             "evaluated_option_ids": [a["id"] for a in evaluated["alternatives"]]}
 
 
@@ -107,14 +106,24 @@ def test_replay_filters_original_state_and_can_override_policy_without_mutation(
     state = _constraint_state()
     snapshot = snapshot_for(state, noul=0.9, sufficiency=0.2)
     before = copy.deepcopy((state, snapshot))
-    assert replay(state, snapshot)["rule"] == "human_preference"
-    result = replay(state, snapshot, gate_order="evidence_first")
+    result = replay(state, snapshot)
     assert result["rule"] == "evidence_insufficient"
     assert set(result["probabilities"]) == {"option_a", "option_b"}
     assert result["constraint_check"]["eligible_option_ids"] == ["option_a", "option_b"]
     assert (state, snapshot) == before
     thresholds = {**_thresholds(), "human_preference": 1.0, "sufficiency": 0.1}
     assert replay(state, snapshot, thresholds)["decision"] == "SELECT_OPTION"
+
+
+def test_replay_ignores_legacy_gate_order_field():
+    state = _valid_state()
+    snapshot = snapshot_for(state)
+    snapshot["gate_order"] = "evidence_first"  # legacy captured snapshot
+    resolution = replay(state, snapshot)
+    assert resolution["decision"] in ("ASK_USER", "SELECT_OPTION",
+                                      "SELECT_OPTION_WITH_CAUTION")
+    assert resolution == replay(state, {key: value for key, value in snapshot.items()
+                                        if key != "gate_order"})
 
 
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf"), True, "0.9"])
@@ -145,7 +154,7 @@ def test_replay_requires_every_parsed_signal(field):
 
 
 @pytest.mark.parametrize("change", ["version", "bool_version", "missing_thresholds", "threshold_nan",
-                                    "gate_order", "parsed_type", "ids_type", "duplicate_ids",
+                                    "unknown_field", "parsed_type", "ids_type", "duplicate_ids",
                                     "ids_mismatch", "ids_order", "probability_ids", "score_option_ids",
                                     "score_criterion_ids", "choice", "choice_disagreement", "blocker",
                                     "score_range", "signal_range", "threshold_range", "extra_signal"])
@@ -156,7 +165,7 @@ def test_replay_rejects_malformed_snapshot(change):
     elif change == "bool_version": snapshot["schema_version"] = True
     elif change == "missing_thresholds": del snapshot["thresholds"]
     elif change == "threshold_nan": snapshot["thresholds"]["sufficiency"] = float("nan")
-    elif change == "gate_order": snapshot["gate_order"] = "unknown"
+    elif change == "unknown_field": snapshot["capture_note"] = "unknown"
     elif change == "parsed_type": snapshot["parsed"] = []
     elif change == "ids_type": snapshot["evaluated_option_ids"] = "option_a"
     elif change == "duplicate_ids": snapshot["evaluated_option_ids"] = ["option_a", "option_a"]
@@ -192,19 +201,18 @@ def test_replay_rejects_state_that_cannot_be_evaluated(change):
         replay(state, snapshot)
 
 
-@pytest.mark.parametrize("thresholds, order", [
-    ({**_thresholds(), "sufficiency": float("inf")}, "human_first"),
-    ({**_thresholds(), "review": True}, "human_first"),
-    ({k: v for k, v in _thresholds().items() if k != "min_gap"}, "human_first"),
-    (_thresholds(), "unknown"),
+@pytest.mark.parametrize("thresholds", [
+    {**_thresholds(), "sufficiency": float("inf")},
+    {**_thresholds(), "review": True},
+    {k: v for k, v in _thresholds().items() if k != "min_gap"},
 ])
-def test_replay_rejects_invalid_override(thresholds, order):
+def test_replay_rejects_invalid_override(thresholds):
     state = _valid_state()
     with pytest.raises(ValueError):
-        replay(state, snapshot_for(state), thresholds, order)
+        replay(state, snapshot_for(state), thresholds)
 
 
-@pytest.mark.parametrize("field", ["schema_version", "parsed", "thresholds", "gate_order",
+@pytest.mark.parametrize("field", ["schema_version", "parsed", "thresholds",
                                    "evaluated_option_ids"])
 def test_replay_requires_snapshot_metadata(field):
     state = _valid_state()
@@ -257,23 +265,23 @@ def calibration_case(case_id, situation="constraint_clear", derived=None):
                              "acceptable_selections": ["option_a"], "forbidden_selections": []}}
 
 
-def captured_runs(case, sufficiency=0.9, confidence=0.95, blocker_confidence=0.9, noul=0.1):
+def captured_runs(case, sufficiency=0.9, confidence=0.95, blocker_confidence=0.9, noul=0.1,
+                  blocker="facts_missing"):
     from datetime import datetime, timezone
     snapshot = snapshot_for(case["state"], sufficiency=sufficiency, confidence=confidence,
-                            blocker_confidence=blocker_confidence, noul=noul)
+                            blocker_confidence=blocker_confidence, noul=noul, blocker=blocker)
     return [{"case_id": case["id"], "run_index": index, "recorded_at": datetime.now(timezone.utc).isoformat(),
              "resolution": {**replay(case["state"], snapshot), "evaluation_snapshot": snapshot}}
             for index in (1, 2, 3)]
 
 
-def test_grid_ranks_90_policies_and_prefers_smallest_current_order_change():
+def test_grid_ranks_45_policies_and_prefers_smallest_threshold_change():
     import calibrate_thresholds as cal
     clear = calibration_case("clear")
     missing = calibration_case("missing", derived={"base": "clear", "perturbation": "evidence_removed"})
     ranked = cal.rank_policies([clear, missing], captured_runs(clear) + captured_runs(missing, 0.82))
-    assert len(cal.candidate_policies()) == len(ranked) == 90
+    assert len(cal.candidate_policies()) == len(ranked) == 45
     assert ranked[0]["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
-    assert ranked[0]["gate_order"] == "human_first"
     assert ranked[0]["counts"]["evidence_misses"] == 0
     assert ranked[0]["counts"]["clear_completed"] == 3
     assert ranked[0]["counts"]["clear_correct"] == 3
@@ -311,7 +319,9 @@ def test_rank_rejects_inconsistent_records(change):
     elif change == "index": runs[0]["run_index"] = True
     elif change == "phase": runs[0]["phase"] = 2
     elif change == "no_snapshot": runs[0]["resolution"].pop("evaluation_snapshot")
-    elif change == "wrong_capture": runs[0]["resolution"]["evaluation_snapshot"]["gate_order"] = "evidence_first"
+    elif change == "wrong_capture":
+        runs[0]["resolution"]["evaluation_snapshot"]["thresholds"] = {
+            **_thresholds(), "sufficiency": 0.75}
     with pytest.raises(ValueError):
         cal.rank_policies([case], runs)
 
@@ -393,23 +403,23 @@ def test_rank_detects_loop_phase2_failure_and_counts_phase1_unsafe():
     second_case = {**case, "state": case_schema.loop_phase2_state(case)}
     runs += [{**run, "phase": 2} for run in captured_runs(second_case, 0.82)]
     ranked = cal.rank_policies([case], runs)
-    current = next(row for row in ranked if row["thresholds"] == _thresholds() and row["gate_order"] == "human_first")
-    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
-                  and row["gate_order"] == "human_first")
+    current = next(row for row in ranked if row["thresholds"] == _thresholds())
+    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85})
     assert current["counts"]["unsafe"] == 3
     assert strict["counts"]["loop_phase2_failures"] == 3
     assert strict["counts"]["db_loop_passes"] == 0
 
 
-@pytest.mark.parametrize("sufficiency, blocker, expected", [(0.85, 0.5, "SELECT_OPTION"),
-    (0.849999, 0.5, "ASK_USER"), (0.849999, 0.499999, "SELECT_OPTION")])
-def test_rank_replay_threshold_boundaries(sufficiency, blocker, expected):
+@pytest.mark.parametrize("sufficiency, blocker, blocker_confidence, expected", [
+    (0.85, "facts_missing", 0.5, "SELECT_OPTION"),
+    (0.849999, "facts_missing", 0.5, "ASK_USER"),
+    (0.849999, "user_preference_unknown", 0.9, "ASK_USER")])
+def test_rank_replay_threshold_boundaries(sufficiency, blocker, blocker_confidence, expected):
     import calibrate_thresholds as cal
     case = calibration_case("clear")
-    runs = captured_runs(case, sufficiency, blocker_confidence=blocker)
+    runs = captured_runs(case, sufficiency, blocker_confidence=blocker_confidence, blocker=blocker)
     ranked = cal.rank_policies([case], runs)
-    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
-                  and row["gate_order"] == "human_first")
+    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85})
     assert strict["counts"]["clear_completed"] == (3 if expected == "SELECT_OPTION" else 0)
 
 
@@ -474,7 +484,6 @@ def test_search_freezes_policy_and_validate_accepts_without_live_calls(tmp_path)
     for case in cases:
         for run in captured_runs(case, 0.2 if case["situation"] == "info_missing" else 0.98):
             run["resolution"]["evaluation_snapshot"]["thresholds"] = policy["thresholds"]
-            run["resolution"]["evaluation_snapshot"]["gate_order"] = policy["gate_order"]
             runs.append(run)
     validation = tmp_path / "validation.jsonl"
     validation.write_text("".join(json.dumps(run) + "\n" for run in runs))
@@ -525,24 +534,21 @@ def test_validation_manifest_rejects_hash_path_and_pair_errors(tmp_path, change)
         cal.load_validation_manifest(manifest)
 
 
-def test_grid_ties_use_change_count_order_absolute_delta_and_grid_order():
+def test_grid_ties_use_change_count_absolute_delta_and_grid_order():
     import calibrate_thresholds as cal
     case = calibration_case("clear")
     ranked = cal.rank_policies([case], captured_runs(case, 0.98))
     assert ranked[0]["thresholds"] == _thresholds()
-    assert ranked[0]["gate_order"] == "human_first"
-    assert len({(tuple(sorted(row["thresholds"].items())), row["gate_order"]) for row in ranked}) == 90
+    assert len({tuple(sorted(row["thresholds"].items())) for row in ranked}) == 45
     current = ranked[0]
-    assert current["rank_key"] == [0, 0, 0, 0, 0, False, 0.0, 2]
+    assert current["rank_key"] == [0, 0, 0, 0, 0, 0.0, 1]
     index = {row["grid_index"]: pos for pos, row in enumerate(ranked)}
     # 0.05 auto-select changes sort before the 0.15 sufficiency change.
-    assert index[8] < index[20]
-    # One order change is preferred to two threshold changes despite human_first.
-    assert index[3] < index[18]
-    # A current-order threshold change is preferred over an order-only change.
-    assert index[8] < index[3]
-    # Same change count, order and distance: the declared sufficiency/auto grid wins.
-    assert index[32] < index[44]
+    assert index[4] < index[10]
+    # At equal change counts the smaller absolute threshold distance wins.
+    assert index[4] < index[3]
+    # Same change count and distance: the declared sufficiency/auto grid wins.
+    assert index[16] < index[22]
 
 
 @pytest.mark.parametrize("resolution", [[], None, "invalid"])
@@ -596,8 +602,7 @@ def test_summary_reports_all_ask_expected_situations_and_clear_failure_examples(
     runs = (captured_runs(missing, 0.2) + captured_runs(preference, noul=0.9)
             + captured_runs(removed, 0.82) + captured_runs(clear, 0.82))
     ranked = cal.rank_policies([missing, preference, removed, clear], runs)
-    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
-                  and row["gate_order"] == "human_first")
+    strict = next(row for row in ranked if row["thresholds"] == {**_thresholds(), "sufficiency": 0.85})
     assert strict["counts"]["ask_expected"] == 9
     assert strict["counts"]["asked_ok"] == 9
     assert {failure["case_id"] for failure in strict["failures"]
@@ -610,7 +615,7 @@ def test_describe_rejects_nonobject_snapshot_parsed_values(tmp_path):
     runs = tmp_path / "runs.jsonl"
     runs.write_text(json.dumps({"case_id": "clear", "resolution": {
         "evaluation_snapshot": {"schema_version": 1, "parsed": [{}], "thresholds": _thresholds(),
-                                "gate_order": "human_first", "evaluated_option_ids": ["option_a", "option_b"]}}}) + "\n")
+                                "evaluated_option_ids": ["option_a", "option_b"]}}}) + "\n")
     assert cal.main(["describe", "--runs-file", str(runs), "--out-file", str(tmp_path / "description.json")]) == 2
 
 
@@ -709,7 +714,6 @@ def test_validate_returns_input_error_for_nonstring_case_id(tmp_path, frozen_cal
     run = captured_runs(cases[0], 0.2)[0]
     run["case_id"] = bad_id
     run["resolution"]["evaluation_snapshot"]["thresholds"] = policy["thresholds"]
-    run["resolution"]["evaluation_snapshot"]["gate_order"] = policy["gate_order"]
     runs = tmp_path / "runs.jsonl"
     runs.write_text(json.dumps(run) + "\n")
     out = tmp_path / "validation"
@@ -754,7 +758,7 @@ def test_validate_enforces_frozen_evidence_boundary(tmp_path, frozen_calibration
     runs = []
     for case in cases:
         for run in captured_runs(case, 0.2 if case["situation"] == "info_missing" else 0.98):
-            run["resolution"]["evaluation_snapshot"].update(thresholds=policy["thresholds"], gate_order=policy["gate_order"])
+            run["resolution"]["evaluation_snapshot"].update(thresholds=policy["thresholds"])
             runs.append(run)
     if change == "before_manifest": runs[0]["recorded_at"] = "2019-12-31T23:59:59Z"
     elif change == "before_policy": runs[0]["recorded_at"] = policy.get("frozen_at", "2020-01-01T00:00:01Z")
@@ -794,32 +798,31 @@ def test_search_selects_best_training_feasible_policy_before_freeze(tmp_path):
         parsed = run["resolution"]["evaluation_snapshot"]["parsed"]
         if ("constraint_clear" in run["case_id"] or "detail_asymmetry" in run["case_id"]
                 or "reorder" in run["case_id"] or "violating_candidate" in run["case_id"]
-                or ("loop" in run["case_id"] and run["phase"] == 2)):
-            parsed.update(evidence_sufficiency=0.82, blocker_confidence=0.35)
-        if run["case_id"] == "auth_preference_needed":
-            parsed.update(evidence_sufficiency=0.82, blocker_confidence=0.35, human_preference=0.1)
+                or run["case_id"] == "db_evidence_removed"):
+            # 0.88 completes under sufficiency 0.85 policies but the 0.90
+            # policies stop these valid clear cases.
+            parsed.update(evidence_sufficiency=0.88)
     training.write_text("".join(json.dumps(run) + "\n" for run in runs))
     out = tmp_path / "search"
     assert cal.main(["search", "--cases-dir", str(root / "cases"), "--loop-cases-dir", str(root / "cases_loop"),
                      "--runs-file", str(training), "--manifest", str(manifest), "--out-dir", str(out)]) == 0
     ranking = json.loads((out / "ranking.json").read_text())
     policy = json.loads((out / "selected-policy.json").read_text())
-    # Global rank one removes all unsafe selections by stopping valid clear cases.
+    # Global rank one removes the last evidence misses by stopping valid clear cases.
     assert ranking[0]["counts"]["unsafe"] == 0
     assert ranking[0]["counts"]["clear_completed"] == 0
     # Feasibility precedes ordering: preserve all clear and db-loop successes,
-    # reduce six evidence misses, and then use the unchanged tie-break rules.
+    # reduce the six reference evidence misses, and keep the tie-break rules.
     assert policy["training"]["adoption"] == {"accepted": True, "reasons": []}
     assert policy["thresholds"] == {**_thresholds(), "sufficiency": 0.85}
-    assert policy["gate_order"] == "human_first"
-    assert policy["training"]["candidate"]["grid_index"] == 56
+    assert policy["training"]["candidate"]["grid_index"] == 28
     assert policy["training"]["candidate"]["counts"]["clear_completed"] == 33
     assert policy["training"]["candidate"]["counts"]["db_loop_passes"] == 3
-    assert policy["training"]["candidate"]["counts"]["evidence_misses"] == 0
+    assert policy["training"]["candidate"]["counts"]["evidence_misses"] == 3
     assert policy["training"]["reference"]["counts"]["evidence_misses"] == 6
     assert policy["selection"]["rule"] == "training_feasible_then_lexicographic_v1"
-    assert policy["selection"]["eligible_policy_count"] > 0
-    assert policy["selection"]["overall_rank"] > 1
+    assert policy["selection"]["eligible_policy_count"] == 9
+    assert policy["selection"]["overall_rank"] == 10
 
 
 def test_search_records_zero_feasible_policies_without_fabricating_acceptance(tmp_path):

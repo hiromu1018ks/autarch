@@ -6,6 +6,7 @@ import urllib.error
 from pathlib import Path
 
 import decide
+import calibrate_thresholds
 
 DECIDE_SCRIPT = Path(decide.__file__)
 
@@ -1907,10 +1908,10 @@ class TestEvaluationCapture:
             assert snapshot["parsed"]["scores"]["fit"]["option_a"] == 1.23456789
             assert output["score_summary"]["option_a"]["fit"] == 0.6173
             assert "unused" not in snapshot["parsed"]
-            # Replay the captured signals through the same policy: the
+            # Replay the captured signals through the calibration seam: the
             # snapshot must reproduce the emitted resolution exactly.
-            replayed = decide.resolve(evaluated, copy.deepcopy(snapshot["parsed"]),
-                                      _thresholds())
+            replayed = calibrate_thresholds.replay_resolution(
+                evaluated, snapshot, _thresholds())
             for field in ("decision", "rule", "selected_option"):
                 assert replayed[field] == output[field]
             assert "sk-secretabcdefgh" not in json.dumps(output)
