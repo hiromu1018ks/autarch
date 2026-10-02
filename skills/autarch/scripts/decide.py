@@ -52,8 +52,9 @@ PATTERN_EXEMPT_KEYS = frozenset({"id"})
 ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 NOUL_INSTRUCTIONS = (
-    "Does resolving this decision require the user's personal preference, "
-    "business intent, subjective taste, or value judgment?"
+    "Does resolving this decision depend on the user's own preference, "
+    "plans, or intent — something the agent cannot obtain by "
+    "investigating sources?"
 )
 CHOICE_INSTRUCTIONS = (
     "Select the option that best satisfies the goal and constraints."
@@ -73,12 +74,13 @@ BLOCKER_CLASSES = (
 )
 BLOCKER_DESCRIPTIONS = {
     "user_preference_unknown": (
-        "The user's preference, plan, or intent is needed and not present "
-        "in the state"
+        "What is missing is the user's own preference, plan, or intent; "
+        "no investigation can supply it"
     ),
     "facts_missing": (
-        "A technical fact needed to compare the alternatives is missing "
-        "from the evidence"
+        "A fact needed to compare the alternatives is missing, and the "
+        "agent can obtain it by investigating sources (repository, "
+        "documentation, web search)"
     ),
     "material_bias": (
         "Alternatives or criteria are described unevenly in a way that "

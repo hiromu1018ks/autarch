@@ -14,7 +14,7 @@ def test_module_exposes_constants():
     assert "credentials" in decide.SENSITIVE_KEY_TERMS
     assert len(decide.STRING_PATTERNS) >= 7
     assert decide.PATTERN_EXEMPT_KEYS == frozenset({"id"})
-    assert decide.NOUL_INSTRUCTIONS.startswith("Does resolving this decision require")
+    assert decide.NOUL_INSTRUCTIONS.startswith("Does resolving this decision depend")
     assert decide.CHOICE_INSTRUCTIONS == (
         "Select the option that best satisfies the goal and constraints."
     )
@@ -628,6 +628,25 @@ class TestBuildRequest:
         import json as json_module
 
         json_module.dumps(payload, ensure_ascii=False)
+
+    def test_question_wordings_distinguish_investigable_from_intent(self):
+        state = _valid_state()
+        payload = decide.build_request(state, "jev-test")
+        questions = payload["questions"]
+        assert questions["requires_human_preference"]["instructions"] == (
+            "Does resolving this decision depend on the user's own preference, "
+            "plans, or intent — something the agent cannot obtain by "
+            "investigating sources?"
+        )
+        assert questions["blocker_class"]["criteria"]["facts_missing"] == (
+            "A fact needed to compare the alternatives is missing, and the "
+            "agent can obtain it by investigating sources (repository, "
+            "documentation, web search)"
+        )
+        assert questions["blocker_class"]["criteria"]["user_preference_unknown"] == (
+            "What is missing is the user's own preference, plan, or intent; "
+            "no investigation can supply it"
+        )
 
 
 class FakeResponse:
@@ -1526,12 +1545,13 @@ class TestCliContractViaSubprocess:
 class TestDomainAgnostic:
     def test_no_coding_vocabulary_in_source(self):
         source = Path(decide.__file__).read_text(encoding="utf-8").lower()
+        # "repository" is deliberately absent: BLOCKER_DESCRIPTIONS names it
+        # as an example of an investigable source (spec, 2026-10-02).
         for term in (
             "package.json",
             "sqlite",
             "postgres",
             "jwt",
-            "repository",
             "database",
             "authentication",
         ):
