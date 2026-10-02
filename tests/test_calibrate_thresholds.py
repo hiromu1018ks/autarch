@@ -390,6 +390,31 @@ def test_describe_marks_legacy_blocker_unknown_without_claiming_replay(tmp_path)
     assert output.read_bytes() == before
 
 
+def test_describe_counts_legacy_gate_order_snapshot_as_replayable(tmp_path):
+    import json
+    import calibrate_thresholds as cal
+    state = _valid_state()
+    snapshot = snapshot_for(state)
+    snapshot["gate_order"] = "evidence_first"  # legacy captured snapshot
+    runs = tmp_path / "runs.jsonl"
+    runs.write_text(json.dumps({"case_id": "db_constraint_clear",
+                                "resolution": {"decision": "SELECT_OPTION",
+                                               "evaluation_snapshot": copy.deepcopy(snapshot)}}) + "\n")
+    output = tmp_path / "description.json"
+    assert cal.main(["describe", "--runs-file", str(runs), "--out-file", str(output)]) == 0
+    described = json.loads(output.read_text())
+    assert described["replayable"] == 1
+    assert described["runs"] == 1
+    # A snapshot missing a real field stays non-replayable even with gate_order.
+    del snapshot["thresholds"]
+    runs.write_text(json.dumps({"case_id": "db_constraint_clear",
+                                "resolution": {"decision": "SELECT_OPTION",
+                                               "evaluation_snapshot": snapshot}}) + "\n")
+    output = tmp_path / "incomplete.json"
+    assert cal.main(["describe", "--runs-file", str(runs), "--out-file", str(output)]) == 0
+    assert json.loads(output.read_text())["replayable"] == 0
+
+
 def test_rank_detects_loop_phase2_failure_and_counts_phase1_unsafe():
     import calibrate_thresholds as cal
     case = calibration_case("db_loop", "loop_resolvable")

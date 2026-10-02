@@ -334,7 +334,11 @@ def describe_runs(runs):
         signals = resolution.get("evaluation_signals") or {}
         if not isinstance(parsed, dict) or not isinstance(signals, dict):
             raise ValueError("captured signals must be objects")
-        replayable += isinstance(snapshot, dict) and set(snapshot) == SNAPSHOT_FIELDS and set(parsed) == PARSED_FIELDS
+        # Snapshots captured before the gate-order removal carry a legacy
+        # "gate_order" key that replay ignores; it does not block replay.
+        replayable += (isinstance(snapshot, dict)
+                       and set(snapshot) - {"gate_order"} == SNAPSHOT_FIELDS
+                       and set(parsed) == PARSED_FIELDS)
         values = {"confidence": parsed.get("confidence", resolution.get("confidence")),
                   "evidence_sufficiency": parsed.get("evidence_sufficiency", resolution.get("evidence_sufficiency")),
                   "human_preference": parsed.get("human_preference", resolution.get("human_preference_probability")),
