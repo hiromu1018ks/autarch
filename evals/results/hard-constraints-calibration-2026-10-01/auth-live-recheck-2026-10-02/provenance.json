@@ -1,0 +1,18 @@
+{
+  "code_commit": "83d79e655c2d8b4901ed09248cd0faa44a161e81",
+  "command": ".venv/bin/python3 evals/run_full_flow.py --out-dir evals/results/hard-constraints-calibration-2026-10-01/auth-live-recheck-2026-10-02 --agent-model sonnet --scenario authentication",
+  "runner_exit_code": 0,
+  "live_agent_runs": 1,
+  "retries": 0,
+  "postcheck": {
+    "state_validation_errors": [],
+    "independently_recomputed_verdict": {
+      "coverage": true,
+      "forbidden_avoided": true,
+      "decision_ok": true,
+      "state_valid": true,
+      "selected_group": null
+    }
+  },
+  "original_results_preserved": true
+}

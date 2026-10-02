@@ -1,0 +1,153 @@
+{
+  "goal": "Implement authentication for admin-panel, an internal server-rendered admin tool, choosing the authentication state strategy that best matches the current codebase and roadmap.",
+  "question": "Select the authentication state strategy that best matches the admin-panel's current architecture (stdlib-only Python HTTP server, server-rendered, single origin) and its known roadmap.",
+  "known_constraints": [
+    "The app is server-rendered by its own web server and served from a single origin (README.md:3-6).",
+    "There are no external API consumers today (README.md:4-5).",
+    "The product roadmap mentions a possible mobile app, but nothing has been decided (README.md:5-6).",
+    "The codebase is a minimal Python stdlib-only app with no dependency manifests (app.py:1-3; no requirements.txt, pyproject.toml, or package.json in the repository).",
+    "No authentication exists yet: the sign-in form is a placeholder with no /login handler and no session or token logic (app.py:5-12).",
+    "The development entrypoint binds to 127.0.0.1:8080 over plain HTTP with no TLS configuration (app.py:15-16)."
+  ],
+  "environment": {
+    "language": "python",
+    "web_framework": "python stdlib http.server (BaseHTTPRequestHandler / HTTPServer)",
+    "rendering": "server-rendered",
+    "origin_model": "single origin",
+    "users": "five-person internal team",
+    "external_api_consumers": "none today",
+    "mobile_app": "mentioned in roadmap, undecided",
+    "dependency_manifests": "none",
+    "existing_auth": "none"
+  },
+  "evidence": [
+    "README.md:3-6 states the app is 'An internal admin panel for a five-person team', is 'server-rendered by its own web server and served from a single origin', has 'no external API consumers today', and its roadmap 'mentions a possible mobile app, but nothing has been decided'.",
+    "app.py:1-3 states the app is a 'Minimal server-rendered admin panel (stdlib only)' built on http.server.BaseHTTPRequestHandler and HTTPServer.",
+    "app.py:5-12 contains no authentication logic: a placeholder sign-in form pointing at /login with no handler, no cookies, no sessions, and no tokens.",
+    "A repository file inventory shows only README.md and app.py: there is no requirements.txt, pyproject.toml, or package.json, so a JWT or session library would be a new dependency.",
+    "app.py:15-16 binds HTTPServer to 127.0.0.1:8080 with no TLS configuration in the development entrypoint."
+  ],
+  "alternatives": [
+    {
+      "id": "server_session_cookie",
+      "name": "Server-side session with HttpOnly cookie",
+      "description": "Issue an opaque random session ID in an HttpOnly cookie and keep the session record (user, expiry) in a server-side store.",
+      "advantages": [
+        "The session ID is opaque and HttpOnly, so JavaScript on the page cannot read it.",
+        "Logout and revocation are immediate: delete the server-side record.",
+        "Cookies are sent automatically on same-origin navigation, so plain server-rendered pages work without client-side JavaScript changes.",
+        "Achievable with the standard library alone (secrets for ID generation, an in-memory dict or sqlite3 for the store)."
+      ],
+      "disadvantages": [
+        "Introduces server-side state that must be stored and cleaned up; an in-memory store loses sessions on restart.",
+        "Cookie-based auth needs CSRF mitigations (SameSite attribute plus a CSRF token) on state-changing requests.",
+        "Non-browser clients cannot rely on cookies and would need a separate token flow if a mobile app is built."
+      ],
+      "assumptions": [
+        "An in-process or sqlite session store on the same server is acceptable for a five-person team.",
+        "Requests remain same-origin, so SameSite cookie settings are sufficient CSRF mitigation."
+      ]
+    },
+    {
+      "id": "jwt_bearer_localstorage",
+      "name": "Stateless JWT with Bearer header",
+      "description": "Sign a stateless JWT with an expiry claim, keep it in browser localStorage, and send it as an Authorization: Bearer header on each request.",
+      "advantages": [
+        "Verification is stateless: the server checks only the signature and expiry, so no session store is needed.",
+        "Works uniformly for any client that can set an HTTP header, including a future mobile app.",
+        "The browser does not send the token automatically, so requests are not exposed to CSRF."
+      ],
+      "disadvantages": [
+        "The token is readable by JavaScript, so any XSS vulnerability exposes it until expiry.",
+        "Logout and immediate revocation are not possible without a server-side denylist, which removes the statelessness benefit.",
+        "A server-rendered app cannot attach Authorization headers on plain navigation, so every protected page load needs custom JavaScript fetch handling."
+      ],
+      "assumptions": [
+        "The team is willing to implement JWT sign/verify with hmac/hashlib or to add a dependency.",
+        "Exposure of a stolen token until expiry is an acceptable risk for an internal five-person panel."
+      ]
+    },
+    {
+      "id": "jwt_httponly_cookie",
+      "name": "Stateless JWT in an HttpOnly cookie",
+      "description": "Sign a stateless JWT with an expiry claim, deliver it in an HttpOnly SameSite cookie, and verify the signature on each request without a session store.",
+      "advantages": [
+        "Verification is stateless, so no session store is required.",
+        "HttpOnly cookies are not readable by JavaScript, so XSS cannot read the token itself.",
+        "Cookies are sent automatically on same-origin navigation, so plain server-rendered pages work without client-side JavaScript changes."
+      ],
+      "disadvantages": [
+        "Like any cookie-based scheme it needs CSRF mitigations (SameSite attribute plus a CSRF token).",
+        "Logout and immediate revocation are not possible without a denylist, which removes the statelessness benefit.",
+        "Non-browser clients must manage the cookie jar themselves, which is possible but less conventional."
+      ],
+      "assumptions": [
+        "The team is willing to implement JWT sign/verify with hmac/hashlib or to add a dependency.",
+        "A short token lifetime is acceptable for admin sessions, or a denylist can be added later if revocation is needed."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "same_origin_fit",
+      "name": "Fit for a single-origin server-rendered app",
+      "weight": 0.25,
+      "rubric": [
+        "Awkward for same-origin server-rendered navigation and needs extra client plumbing",
+        "Workable but adds client-side or cross-origin complexity",
+        "Natural fit: works with plain same-origin server-rendered navigation"
+      ]
+    },
+    {
+      "id": "implementation_effort",
+      "name": "Implementation effort on the stdlib-only codebase",
+      "weight": 0.2,
+      "rubric": [
+        "Needs new dependencies or significant infrastructure",
+        "Requires moderate new code with no new dependencies",
+        "Achievable with a small amount of stdlib-only code"
+      ]
+    },
+    {
+      "id": "revocation_and_logout",
+      "name": "Immediate logout and revocation",
+      "weight": 0.15,
+      "rubric": [
+        "Access stays valid until token expiry; no immediate revocation",
+        "Immediate revocation requires adding a denylist",
+        "Immediate revocation is direct: delete the server-side record"
+      ]
+    },
+    {
+      "id": "theft_and_csrf_exposure",
+      "name": "Exposure to XSS token theft and CSRF",
+      "weight": 0.15,
+      "rubric": [
+        "Exposed to both XSS token theft and CSRF",
+        "Exposed to XSS token theft or CSRF, but not both",
+        "Minimizes both exposures"
+      ]
+    },
+    {
+      "id": "multi_client_readiness",
+      "name": "Readiness for a future non-browser client (mobile app)",
+      "weight": 0.15,
+      "rubric": [
+        "Requires a separate flow or rework for non-browser clients",
+        "Serves non-browser clients with adaptation",
+        "Works for browser and non-browser clients with no changes"
+      ]
+    },
+    {
+      "id": "operational_state",
+      "name": "Server-side state and operational complexity",
+      "weight": 0.1,
+      "rubric": [
+        "Requires durable shared state or an external store",
+        "Adds in-process state that is lost on restart",
+        "No server-side session state required"
+      ]
+    }
+  ],
+  "hard_constraints": []
+}

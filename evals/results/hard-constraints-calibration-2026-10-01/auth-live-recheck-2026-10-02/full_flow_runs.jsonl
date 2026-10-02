@@ -1,0 +1,1 @@
+{"scenario": "authentication", "situation": "preference_needed", "status": "ok", "reason": null, "verdict": {"coverage": true, "forbidden_avoided": true, "decision_ok": true, "state_valid": true, "selected_group": null}, "agent_model": "sonnet", "claude_exit_code": 0, "duration_s": 436.5, "recorded_at": "2026-10-01T23:58:58Z"}

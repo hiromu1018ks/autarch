@@ -1,6 +1,18 @@
 # Autarch 拡張開発の状態
 
-必須条件の採点前検査と閾値比較を実装し、閾値候補は検証用で不採用となり既定値を維持した。runtimeの応答ID伏せ字バグは `f4e8920` で修正・独立レビュー済み。修正後の認証full-flowはAPI接続エラーで判定に届かず、live挙動は未観測。calibration replayの合法ID伏せ字問題も修正し、最終の限定再レビューはコード品質・評価記録を承認、残る指摘0件。2026-10-02に承認済み差分をcommitし、mainへローカル統合した。
+必須条件の採点前検査と閾値比較を実装し、閾値候補は検証用で不採用となり既定値を維持した。runtimeの応答ID伏せ字バグは `f4e8920` で修正・独立レビュー済み。ネットワーク復旧後の認証full-flowは1件実測し、期待どおりASK_USERとなった。calibration replayの合法ID伏せ字問題も修正し、最終の限定再レビューはコード品質・評価記録を承認、残る指摘0件。2026-10-02に承認済み差分をcommitし、mainへローカル統合した。
+
+## 2026-10-02: ネットワーク復旧後の認証再評価を完了
+
+ユーザーの再実行指示を受け、mainの83d79e6でauthenticationを1回だけ実測した。
+[再評価記録](evals/results/hard-constraints-calibration-2026-10-01/auth-live-recheck-2026-10-02/notes.md)は
+runner/Claudeとも終了コード0、436.5秒。ASK_USER / human_preference、selected_option=nullで、
+coverage・forbidden_avoided・decision_ok・state_validは全てtrue。保存stateの検証とverdict再計算も一致した。
+修正後のlive判断が未観測という保留は、この1件について解消した。閾値・製品コードは変更していない。
+元のEAI_AGAIN記録と原評価は保存し、旧集計の分母に今回を混ぜていない。
+今回のcriterion IDと生成stateは以前と異なるため、旧応答との同条件比較ではない。
+空structuredなので、条件除外やunknown調査の実測確認は依然別の課題である。
+以下の未検証表記は、この再実行より前の経過記録である。
 
 ## 2026-10-02: mainへのローカル統合を完了
 
