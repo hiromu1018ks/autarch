@@ -1,0 +1,145 @@
+{
+  "goal": "Deploy the status-page web service in a way the small team can sustain over time.",
+  "question": "Select the deployment target for the containerized status-page service: a managed platform, a self-managed server, or another materially different hosting approach.",
+  "known_constraints": [
+    "The service is a small containerized status web service (README.md).",
+    "The team can afford either a managed platform or a small virtual server, so cost alone is not disqualifying (README.md).",
+    "One person can handle server upkeep, and there is no on-call rotation (README.md).",
+    "The team has stated no strong deployment preference yet (README.md)."
+  ],
+  "environment": {
+    "app": "Single-file Python 3.12 standard-library HTTP server returning a constant 'status: ok' body on 0.0.0.0:8080 (app.py:6-14).",
+    "packaging": "Docker image based on python:3.12-slim; no HEALTHCHECK and no TLS configuration (Dockerfile).",
+    "repository": "Three files total (README.md, app.py, Dockerfile); no CI/CD, reverse proxy, TLS, or infrastructure-as-code configuration present (file listing checked 2026-10-02).",
+    "operations": "One maintainer available for server upkeep; no on-call rotation (README.md)."
+  },
+  "evidence": [
+    "The app serves a constant body 'status: ok' over plain HTTP on 0.0.0.0:8080 using only the Python standard library (app.py:6-14).",
+    "The Dockerfile packages the app as a python:3.12-slim container and defines no HEALTHCHECK or TLS termination (Dockerfile).",
+    "README states the team can afford either a managed platform or a small virtual server, one person can handle server upkeep, there is no on-call rotation, and there is no strong preference yet (README.md:3-5).",
+    "The repository contains no CI/CD pipeline, reverse proxy config, TLS certificates, or infrastructure-as-code files (file listing checked 2026-10-02)."
+  ],
+  "alternatives": [
+    {
+      "id": "managed_container_platform",
+      "name": "Managed Container Platform",
+      "description": "Deploy the existing Docker image to a managed container platform that builds from the repository, provides an HTTPS endpoint with managed TLS, and restarts the container automatically.",
+      "advantages": [
+        "No server upkeep: OS patching, runtime upgrades, and TLS renewal are handled by the platform",
+        "Automatic restarts and platform health checks replace on-call intervention for common failures",
+        "Deployments can be triggered from git or CI without manual server steps"
+      ],
+      "disadvantages": [
+        "Recurring platform fee with pricing that can vary with usage",
+        "Runtime is constrained to what the platform supports, and some configuration is platform-specific",
+        "Less visibility into and control over the host environment"
+      ],
+      "assumptions": [
+        "A platform that runs python:3.12-slim containers is available and accepts this image",
+        "The team is willing to create a platform account and configure a deployment pipeline"
+      ]
+    },
+    {
+      "id": "self_managed_vps",
+      "name": "Self-Managed Virtual Server",
+      "description": "Run the existing Docker image on a small virtual server that the team operates, with Docker for the container and a reverse proxy added for TLS.",
+      "advantages": [
+        "Full control over the host, network, and runtime configuration",
+        "Flat and predictable monthly cost for a small instance",
+        "Runs the existing Dockerfile unchanged with standard tooling"
+      ],
+      "disadvantages": [
+        "OS patching, TLS certificate renewal, and proxy configuration are manual and fall on one maintainer",
+        "With no on-call rotation, outages wait until that person is available",
+        "A single server is a single point of failure unless redundancy is added later"
+      ],
+      "assumptions": [
+        "The team provisions and pays for a small virtual server",
+        "A reverse proxy or equivalent is added for TLS, since the app serves plain HTTP on port 8080"
+      ]
+    },
+    {
+      "id": "static_hosting_cdn",
+      "name": "Static Hosting behind a CDN",
+      "description": "Publish the status response as a static file on managed static hosting with a CDN, replacing the Python server with a static page.",
+      "advantages": [
+        "No server and no container runtime to maintain at all",
+        "CDN edge delivery keeps the page reachable under load",
+        "Costs are typically at or below small-container pricing for a single page"
+      ],
+      "disadvantages": [
+        "Requires changing the deliverable: the Python service is replaced by a static page, so app.py and the Dockerfile are no longer the runtime",
+        "Any future dynamic checks, such as probing other systems, would need a new mechanism",
+        "Deployment becomes a build-and-upload step instead of running the service"
+      ],
+      "assumptions": [
+        "The current response body is constant ('status: ok'), so a static page reproduces the service today",
+        "The team accepts treating the status page as a static artifact rather than a running service"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "operational_burden",
+      "name": "Operational burden",
+      "weight": 0.25,
+      "rubric": [
+        "Regular manual upkeep required with no on-call coverage",
+        "Occasional manual upkeep required",
+        "Minimal upkeep, mostly automated",
+        "No ongoing upkeep required"
+      ]
+    },
+    {
+      "id": "availability_incident_response",
+      "name": "Availability and incident response",
+      "weight": 0.25,
+      "rubric": [
+        "Failures wait on a single maintainer to notice and fix",
+        "Failures auto-restart but recovery paths are manual",
+        "Platform-managed recovery with automatic restarts and failover"
+      ]
+    },
+    {
+      "id": "deployment_fit",
+      "name": "Fit with existing artifact",
+      "weight": 0.2,
+      "rubric": [
+        "Requires replacing the current service implementation",
+        "Requires extra components or pipeline work before the service runs",
+        "Runs the existing Docker image as-is"
+      ]
+    },
+    {
+      "id": "cost_fit",
+      "name": "Cost fit",
+      "weight": 0.1,
+      "rubric": [
+        "Cost likely exceeds what the team can afford",
+        "Cost is affordable but varies with usage",
+        "Cost is affordable and predictable"
+      ]
+    },
+    {
+      "id": "control_portability",
+      "name": "Control and portability",
+      "weight": 0.1,
+      "rubric": [
+        "Fully proprietary runtime with artifact lock-in",
+        "Some platform-specific configuration required",
+        "Full control over host and portable artifacts"
+      ]
+    },
+    {
+      "id": "security_tls",
+      "name": "TLS and patching posture",
+      "weight": 0.1,
+      "rubric": [
+        "Manual TLS and patching owned by the team",
+        "Partially automated TLS or patching",
+        "Platform-managed TLS and patching"
+      ]
+    }
+  ],
+  "hard_constraints": []
+}

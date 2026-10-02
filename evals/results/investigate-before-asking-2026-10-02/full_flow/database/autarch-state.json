@@ -1,0 +1,211 @@
+{
+  "goal": "Ship the first working version of notes-cli, a single-user note-taking CLI, by choosing a storage backend for its note data; the TODO in src/notes/cli.py states this decision blocks the milestone.",
+  "question": "Which storage approach should notes-cli use to persist its note data, given that it is a single-user CLI which runs entirely offline on the user's own machine, only one process touches the data at a time, and the project currently declares zero third-party dependencies?",
+  "known_constraints": [
+    "Runs entirely offline on the user's own machine; no network access is required or desired (README.md).",
+    "Single-user; only one process touches the data at a time (README.md).",
+    "pyproject.toml declares requires-python >=3.10 and an empty dependencies list.",
+    "The storage backend choice blocks the current milestone (src/notes/cli.py TODO)."
+  ],
+  "environment": {
+    "language": "Python",
+    "python_requirement": ">=3.10",
+    "python_in_dev_environment": "3.14.7",
+    "project": "notes-cli 0.1.0",
+    "app_type": "single-user offline command-line tool",
+    "current_dependencies": [],
+    "storage_status": "not implemented; placeholder output in src/notes/cli.py"
+  },
+  "evidence": [
+    "README.md lines 3-5: notes-cli is a single-user note-taking CLI that runs entirely offline on the user's own machine; no network access is required or desired, and only one process touches the data at a time.",
+    "pyproject.toml: notes-cli 0.1.0, requires-python >=3.10, dependencies list is empty (no third-party packages).",
+    "src/notes/cli.py: main() is a placeholder printing 'notes-cli: no storage backend yet', with a TODO stating the storage backend decision blocks the milestone; no storage code exists yet.",
+    "Local smoke test (checked_at 2026-10-02T03:41:46+00:00, Python 3.14.7): the stdlib sqlite3 module created an in-memory table, inserted a row, and selected it back with no network access.",
+    "Local smoke test (checked_at 2026-10-02T03:41:46+00:00, Python 3.14.7): the stdlib json module round-tripped a note-like dict with no dependency and no network access.",
+    "Local smoke test (checked_at 2026-10-02T03:41:46+00:00, Python 3.14.7): a plain-text Markdown note file was written and read back with stdlib pathlib in a temporary directory, with no dependency and no network access.",
+    "Python 3 official documentation (docs.python.org/3/library/sqlite3.html, fetched 2026-10-02): SQLite is a lightweight disk-based database that does not require a separate server process; sqlite3 is a standard-library module (documented as optional in some CPython distributions) that opens local database files directly."
+  ],
+  "alternatives": [
+    {
+      "id": "sqlite_stdlib",
+      "name": "SQLite via stdlib sqlite3",
+      "description": "Store all notes in a single SQLite database file managed through Python's built-in sqlite3 module.",
+      "advantages": [
+        "Transactional, atomic writes protect notes from corruption on crash or partial write (SQLite journaling).",
+        "Supports indexed queries, sorting, and full-text search (FTS5) as the note collection grows.",
+        "Ships in the Python standard library, so it adds no new dependency and requires no server or network.",
+        "One well-defined database file (for example notes.db) simplifies backup and migration."
+      ],
+      "disadvantages": [
+        "Data lives in a binary database file, not directly readable or editable with a plain text editor.",
+        "Requires writing and maintaining SQL schema and query code.",
+        "The bundled SQLite engine differs per CPython build, so advanced features such as FTS5 may vary by environment."
+      ],
+      "assumptions": [
+        "The sqlite3 module is present in the CPython builds used to run notes-cli (the official docs mark it as an optional module in some distributions).",
+        "The note collection may grow enough that indexed queries and search matter."
+      ]
+    },
+    {
+      "id": "json_file",
+      "name": "Single JSON file",
+      "description": "Keep all notes as a list of objects in one JSON file, read and written with Python's built-in json module.",
+      "advantages": [
+        "Minimal code: load the file, mutate the list, dump it back; no schema or SQL to maintain.",
+        "Human-readable structured text that is easy to inspect, hand-edit, and back up.",
+        "Uses only the standard library, adding no dependency and no network access."
+      ],
+      "disadvantages": [
+        "Every change rewrites the whole file; an interrupted write can corrupt the entire store unless atomic write-then-rename logic is implemented by hand.",
+        "All notes are parsed into memory on each run, so performance degrades as the collection grows.",
+        "No built-in indexing or search beyond loading everything and filtering in Python.",
+        "Simultaneous writers would conflict, although this project is single-process by design."
+      ],
+      "assumptions": [
+        "The note volume stays modest enough for a full in-memory load on every command.",
+        "The CLI can implement its own atomic-write handling if durability matters."
+      ]
+    },
+    {
+      "id": "markdown_files",
+      "name": "One Markdown file per note",
+      "description": "Store each note as its own Markdown text file inside a notes directory, using the standard library's pathlib for file operations.",
+      "advantages": [
+        "Maximum human readability and editability; notes work directly with editors, grep, git, and file sync tools.",
+        "A corrupted or deleted file damages only that note, not the whole collection.",
+        "No dependency and no network access; the format is future-proof and tool-agnostic."
+      ],
+      "disadvantages": [
+        "Listing, searching, and sorting require directory scans and per-file parsing on every run.",
+        "Metadata such as timestamps and tags must live in a front-matter convention the CLI itself defines and parses.",
+        "Filesystem limits on filename length and reserved characters constrain note titles and identifiers."
+      ],
+      "assumptions": [
+        "Users value direct access to note files as plain text.",
+        "Directory scans are acceptable at the expected note volume."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "simplicity",
+      "name": "Implementation simplicity for core CRUD",
+      "weight": 1.0,
+      "rubric": [
+        "Large amount of storage machinery to write and maintain for basic add/list/find/delete",
+        "Moderate overhead: some schema or convention code to maintain",
+        "Small amount of straightforward code with few moving parts"
+      ]
+    },
+    {
+      "id": "data-integrity",
+      "name": "Data integrity and crash safety",
+      "weight": 1.25,
+      "rubric": [
+        "An interrupted write can corrupt or lose the whole store unless extra safety code is added",
+        "Damage is contained to individual notes but write safety must be hand-implemented",
+        "Atomic, durable, transactional writes are provided by the storage layer itself"
+      ]
+    },
+    {
+      "id": "search-scale",
+      "name": "Search and scaling as the note collection grows",
+      "weight": 1.0,
+      "rubric": [
+        "Whole store scanned and parsed on every operation; degrades with volume",
+        "Per-file directory scans on each operation; workable at moderate volume",
+        "Indexed queries and full-text search supported natively by the storage layer"
+      ]
+    },
+    {
+      "id": "portability",
+      "name": "Human readability and tool portability of the data",
+      "weight": 1.0,
+      "rubric": [
+        "Opaque binary format readable only through the CLI",
+        "Structured text but machine-oriented layout",
+        "Plain-text notes directly usable with editors, grep, and git"
+      ]
+    },
+    {
+      "id": "dependency-footprint",
+      "name": "Dependency footprint",
+      "weight": 0.75,
+      "rubric": [
+        "Requires adding a third-party package or external service",
+        "Uses only the Python standard library and local files"
+      ]
+    }
+  ],
+  "hard_constraints": [
+    {
+      "id": "offline-local",
+      "description": "Must run entirely offline on the user's own machine with no network access (explicit mandatory statement in README.md).",
+      "assessments": {
+        "sqlite_stdlib": {"status": "met", "evidence_ids": ["readme_offline", "sqlite_smoke_test", "sqlite_docs"]},
+        "json_file": {"status": "met", "evidence_ids": ["readme_offline", "json_smoke_test"]},
+        "markdown_files": {"status": "met", "evidence_ids": ["readme_offline", "file_smoke_test"]}
+      }
+    },
+    {
+      "id": "no-server-process",
+      "description": "Must not require a separate database server process or external service; a single local CLI process is the only thing touching the data (README.md).",
+      "assessments": {
+        "sqlite_stdlib": {"status": "met", "evidence_ids": ["sqlite_docs", "sqlite_smoke_test"]},
+        "json_file": {"status": "met", "evidence_ids": ["json_smoke_test"]},
+        "markdown_files": {"status": "met", "evidence_ids": ["file_smoke_test"]}
+      }
+    }
+  ],
+  "evidence_records": [
+    {
+      "id": "readme_offline",
+      "fact": "README.md states notes-cli is a single-user note-taking CLI that runs entirely offline on the user's own machine, that no network access is required or desired, and that only one process touches the data at a time.",
+      "source": "README.md lines 3-5",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "pyproject_zero_deps",
+      "fact": "pyproject.toml declares project notes-cli version 0.1.0 with requires-python >=3.10 and an empty dependencies list; the only entry point is notes = notes.cli:main.",
+      "source": "pyproject.toml lines 1-12",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "cli_placeholder_todo",
+      "fact": "src/notes/cli.py main() prints 'notes-cli: no storage backend yet' and carries the TODO 'choose storage backend (this decision blocks the milestone)'; no storage code exists anywhere in src/notes/.",
+      "source": "src/notes/cli.py lines 4-10",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "sqlite_smoke_test",
+      "fact": "In the development environment (CPython 3.14.7), the standard-library sqlite3 module connected to an in-memory database, created a table, inserted a row, and selected it back with no network access involved.",
+      "source": "local smoke test .smoke_test_storage.py run 2026-10-02T03:41:46+00:00 (output: 'sqlite3 in-process ok: hello')",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "json_smoke_test",
+      "fact": "In the development environment (CPython 3.14.7), the standard-library json module round-tripped a note-like dict with no third-party dependency and no network access.",
+      "source": "local smoke test .smoke_test_storage.py run 2026-10-02T03:41:46+00:00 (output: 'json round-trip ok: True')",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "file_smoke_test",
+      "fact": "In the development environment (CPython 3.14.7), a plain-text Markdown note file was written and read back with the standard-library pathlib module in a temporary directory, with no dependency and no network access.",
+      "source": "local smoke test .smoke_test_storage.py run 2026-10-02T03:41:46+00:00 (output: 'plain file ok: True')",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    },
+    {
+      "id": "sqlite_docs",
+      "fact": "Per the official Python documentation, SQLite is a lightweight disk-based database that does not require a separate server process, and sqlite3 is a Python standard-library module (documented as optional in some CPython distributions) that opens local database files directly; an embedded engine needs no network connection.",
+      "source": "https://docs.python.org/3/library/sqlite3.html",
+      "checked_at": "2026-10-02T03:41:46+00:00",
+      "kind": "verified"
+    }
+  ]
+}

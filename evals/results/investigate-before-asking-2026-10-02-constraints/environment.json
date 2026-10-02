@@ -1,0 +1,28 @@
+{
+  "runner": "run_constraint_cases.py",
+  "case_kind": "constraints",
+  "cases": [
+    "cost_verified",
+    "db_eligible",
+    "env_none",
+    "env_single",
+    "env_unknown_exhausted",
+    "env_unknown_resolved",
+    "inference_invalid"
+  ],
+  "model": "jev-latest",
+  "capture_evaluation": false,
+  "thresholds": {
+    "auto_select": 0.85,
+    "review": 0.6,
+    "min_gap": 0.15,
+    "human_preference": 0.7,
+    "sufficiency": 0.6,
+    "blocker_confidence": 0.5
+  },
+  "decide_script": "/home/misty/Projects/autarch/skills/autarch/scripts/decide.py",
+  "runs_per_case": 3,
+  "started_at": "2026-10-02T03:32:16Z",
+  "finished_at": "2026-10-02T03:32:49Z",
+  "total_decide_calls": 27
+}

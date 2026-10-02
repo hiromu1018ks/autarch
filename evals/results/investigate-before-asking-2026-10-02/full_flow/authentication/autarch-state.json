@@ -1,0 +1,146 @@
+{
+  "goal": "Add working authentication to admin-panel, an internal admin panel for a five-person team, so team members can sign in and stay signed in across requests.",
+  "question": "Which authentication state strategy should admin-panel use to track a signed-in user across requests?",
+  "known_constraints": [
+    "The user asked only which authentication state strategy to use; no additional mandatory requirements were stated by the user.",
+    "The chosen strategy must support a browser sign-in flow for team members; a placeholder sign-in form already exists in the served markup."
+  ],
+  "environment": {
+    "language": "Python 3, standard library only; no third-party dependencies and no requirements or lock file",
+    "server": "Single-process HTTPServer bound to 127.0.0.1:8080, serving server-rendered HTML",
+    "deployment_shape": "Single origin, no external API consumers today, no database or persistent storage in the repository",
+    "team": "Five-person internal team",
+    "roadmap": "A possible mobile app is mentioned in the roadmap but nothing has been decided"
+  },
+  "evidence": [
+    "The app is an internal admin panel for a five-person team, server-rendered by its own web server and served from a single origin, with no external API consumers today (README.md)",
+    "A possible mobile app appears in the product roadmap but nothing has been decided (README.md)",
+    "The codebase is Python standard-library only: it uses http.server / BaseHTTPRequestHandler / HTTPServer and has no requirements, lock, or dependency file (app.py; repository file listing)",
+    "No authentication is implemented yet; the only auth-related code is a placeholder sign-in form in the served HTML (app.py, PAGE constant)",
+    "There is no database, cache, or persistent storage anywhere in the repository (repository file listing)"
+  ],
+  "alternatives": [
+    {
+      "id": "server_side_session_cookie",
+      "name": "Server-side session with opaque cookie",
+      "description": "Issue a random opaque session ID in an HttpOnly cookie and keep the session state server-side, in an in-memory dict optionally persisted to disk.",
+      "advantages": [
+        "Matches the single-origin, server-rendered architecture: the browser carries the cookie automatically and the server owns all state",
+        "Immediate revocation and logout because the server can delete the session record",
+        "Implementable with stdlib only (http.cookies plus the secrets module); no new dependency",
+        "No credential material is exposed to the client, which limits the impact of script-based theft"
+      ],
+      "disadvantages": [
+        "Needs server-side storage and cleanup of expired sessions; sessions are lost on server restart unless persisted",
+        "A non-browser client such as a possible future mobile app would need a separate token mechanism or a shared session endpoint",
+        "Horizontal scaling would require a shared session store, though the current single-process deployment does not have this problem"
+      ],
+      "assumptions": [
+        "The app keeps running as a single process behind one origin",
+        "Losing sessions on redeploy is acceptable for a five-person internal tool, or a small file-backed store is added"
+      ]
+    },
+    {
+      "id": "stateless_jwt_bearer",
+      "name": "Stateless JWT bearer token",
+      "description": "Sign a JWT at login and hand it to the client, which presents it on each request via an Authorization header or cookie; the server validates the signature without storing session state.",
+      "advantages": [
+        "No server-side session store; any server instance validates tokens independently",
+        "Survives server restarts without losing sessions",
+        "Aligns naturally with non-browser clients: a future mobile app or external API could reuse the same bearer-token flow"
+      ],
+      "disadvantages": [
+        "The stdlib-only codebase would need a new dependency such as PyJWT, or hand-rolled signing, which is a security risk",
+        "Revocation before expiry requires a server-side denylist, which reintroduces the state this option avoids",
+        "Tokens held in browser storage are exposed to script-based theft; cookie transport reintroduces CSRF considerations",
+        "The multi-client benefit is unused today because there are no external API consumers"
+      ],
+      "assumptions": [
+        "Adding a third-party JWT library is acceptable despite the current stdlib-only setup",
+        "The possible mobile app will actually be built, or the flexibility is worth carrying regardless"
+      ]
+    },
+    {
+      "id": "signed_data_cookie",
+      "name": "HMAC-signed stateless data cookie",
+      "description": "Store the session data itself in a cookie protected by an HMAC signature, so the server validates integrity without any server-side store.",
+      "advantages": [
+        "No server-side session store and no session cleanup; the cookie is the entire state",
+        "Survives server restarts, and any number of server instances can validate cookies independently",
+        "Implementable with stdlib hmac/hashlib plus http.cookies, so no new dependency is required",
+        "Keeps browser-managed cookie transport, which fits the single-origin web app"
+      ],
+      "disadvantages": [
+        "Sessions cannot be revoked individually before expiry; a compromised device stays valid until the cookie expires",
+        "The signed payload is readable by the client, so it must stay small and free of sensitive data",
+        "A signing secret must still be provisioned and rotated securely outside the source tree",
+        "Cookie size limits constrain how much session data can be carried"
+      ],
+      "assumptions": [
+        "Short session lifetimes with periodic re-authentication are acceptable for this admin panel",
+        "The signing secret can be managed outside the codebase"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "architecture_fit",
+      "name": "Fit with current architecture",
+      "weight": 0.3,
+      "rubric": [
+        "Conflicts with the single-origin server-rendered architecture",
+        "Requires significant architectural changes",
+        "Acceptable fit with workarounds",
+        "Good fit with minor adjustments",
+        "Natural fit for the current architecture"
+      ]
+    },
+    {
+      "id": "implementation_cost",
+      "name": "Implementation cost and risk",
+      "weight": 0.2,
+      "rubric": [
+        "Requires hand-rolled cryptography or a large new dependency",
+        "Requires a new third-party dependency",
+        "Requires moderate new code with stdlib only",
+        "Small amount of stdlib code using well-trodden patterns"
+      ]
+    },
+    {
+      "id": "security_posture",
+      "name": "Security posture for an internal admin panel",
+      "weight": 0.25,
+      "rubric": [
+        "Poor: common pitfalls are hard to avoid",
+        "Weak: several pitfalls need careful handling",
+        "Adequate when implemented carefully",
+        "Good: revocable sessions and HttpOnly cookies by default",
+        "Strong: revocable, minimal client-side exposure, no cryptographic pitfalls"
+      ]
+    },
+    {
+      "id": "future_flexibility",
+      "name": "Readiness for a possible mobile app",
+      "weight": 0.15,
+      "rubric": [
+        "Cannot serve non-browser clients at all",
+        "Requires full replacement of the mechanism",
+        "Requires an added parallel mechanism",
+        "Extends to non-browser clients with modest work",
+        "Serves non-browser clients natively"
+      ]
+    },
+    {
+      "id": "operational_burden",
+      "name": "Ongoing operational burden",
+      "weight": 0.1,
+      "rubric": [
+        "High: constant cleanup and state management",
+        "Moderate: periodic maintenance needed",
+        "Low: little to no server-side state to manage"
+      ]
+    }
+  ],
+  "hard_constraints": [],
+  "evidence_records": []
+}

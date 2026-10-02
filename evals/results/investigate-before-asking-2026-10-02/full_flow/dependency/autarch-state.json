@@ -1,0 +1,155 @@
+{
+  "goal": "Decide the CSV processing approach for csv-report, an internal tool that turns the weekly CSV export into a summary report and runs as a single script on an analyst's laptop.",
+  "question": "Should csv-report keep its standard-library CSV processing or add a third-party data-handling dependency?",
+  "known_constraints": [
+    "The tool is internal and runs as a single script on the analyst's laptop (README.md).",
+    "Weekly input file sizes have never been measured and vary a lot between weeks (README.md).",
+    "The current summary logic counts the rows of the export (process.py summarize).",
+    "The repository currently has no dependency manifest (verified by file listing)."
+  ],
+  "environment": {
+    "project": "csv-report",
+    "language": "Python",
+    "repository_files": ["README.md", "process.py"],
+    "dependency_manifest": "none",
+    "version_control": "not a git repository",
+    "runtime": "single script run locally on the analyst's laptop",
+    "current_implementation": "stdlib csv module; summarize() counts rows via a generator over csv.reader"
+  },
+  "evidence": [
+    "The repository contains exactly README.md and process.py; there is no pyproject.toml, requirements.txt, or any other dependency manifest (file listing, 2026-10-02).",
+    "process.py imports only the standard-library csv module, and summarize() consumes csv.reader through a generator expression, so parsing is lazy and memory use does not grow with input size (process.py:1-12).",
+    "The process.py docstring says 'stdlib only today', which states the current implementation rather than a mandate (process.py:1).",
+    "Weekly CSV export sizes have never been measured and vary a lot between weeks (README.md:4-5).",
+    "pandas.read_csv reads the entire file into a single DataFrame by default regardless of low_memory; passing chunksize or iterator=True returns a TextFileReader for chunked iteration instead (official pandas documentation, https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html, checked 2026-10-02)."
+  ],
+  "alternatives": [
+    {
+      "id": "stdlib-only",
+      "name": "Keep Standard Library Only",
+      "description": "Continue using the Python standard-library csv module with plain-Python aggregation for the weekly summary report.",
+      "advantages": [
+        "No dependency to install, pin, or upgrade on the analyst's laptop.",
+        "csv.reader yields rows lazily, so memory use does not grow with file size (process.py:11-12).",
+        "Runs on any Python installation with no environment setup steps."
+      ],
+      "disadvantages": [
+        "Richer summaries such as grouping, filtering, or joins must be hand-written.",
+        "No higher-level data operations if report requirements grow."
+      ],
+      "assumptions": [
+        "The weekly report remains a simple aggregate such as a row count or a few summary figures."
+      ]
+    },
+    {
+      "id": "dataframe-dependency",
+      "name": "Add a Data-Handling Dependency",
+      "description": "Introduce a third-party data-handling library (for example pandas or polars) and express the weekly summary as dataframe operations.",
+      "advantages": [
+        "Grouping, filtering, and joins are available as library operations instead of custom code.",
+        "Established APIs reduce hand-written parsing and aggregation code as reports grow.",
+        "Chunked or streaming read modes exist for large files (pandas read_csv supports chunksize)."
+      ],
+      "disadvantages": [
+        "Requires an install step and version pinning on a laptop that currently has no dependency manifest.",
+        "pandas read_csv loads the entire file into one DataFrame by default, so memory use scales with file size unless chunked iteration is adopted.",
+        "Library upgrades and API changes become an ongoing maintenance concern for an internal tool."
+      ],
+      "assumptions": [
+        "A pip/venv (or equivalent) install step is acceptable on the analyst's laptop.",
+        "Future reports will need operations beyond simple counting."
+      ]
+    },
+    {
+      "id": "stdlib-with-adoption-trigger",
+      "name": "Stay Standard Library with an Adoption Trigger",
+      "description": "Keep the standard-library implementation today and define an explicit trigger (for example measured file size or summary complexity) at which a data-handling dependency is adopted.",
+      "advantages": [
+        "No dependency cost until a concrete need is demonstrated.",
+        "Turns the unmeasured file-size unknown (README.md) into a measured trigger condition.",
+        "Defers the library choice until actual requirements are known."
+      ],
+      "disadvantages": [
+        "Requires someone to measure sizes and revisit the decision when the trigger fires.",
+        "Short-term richer reports still require hand-written aggregation."
+      ],
+      "assumptions": [
+        "The team will maintain and act on the trigger condition.",
+        "Near-term report requirements stay close to the current row-count summary."
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "current-scope-fit",
+      "name": "Fit for current workload",
+      "weight": 1.0,
+      "rubric": [
+        "Poor fit: machinery far exceeds a row-count style summary",
+        "Acceptable fit: some extra machinery relative to current needs",
+        "Good fit: matches the current workload directly"
+      ]
+    },
+    {
+      "id": "large-file-resilience",
+      "name": "Resilience to unknown, highly variable weekly file sizes",
+      "weight": 1.25,
+      "rubric": [
+        "Memory use grows with file size by default and needs extra patterns to bound",
+        "Handles large files when additional configuration is applied",
+        "Memory use bounded by default regardless of file size"
+      ]
+    },
+    {
+      "id": "future-analysis-capability",
+      "name": "Capability headroom for richer reports",
+      "weight": 1.0,
+      "rubric": [
+        "Richer analysis requires substantial hand-written code",
+        "Richer analysis requires moderate additional code",
+        "Rich aggregations available as ready-made library operations"
+      ]
+    },
+    {
+      "id": "environment-burden",
+      "name": "Install, maintenance, and reproducibility burden on the analyst's laptop",
+      "weight": 1.0,
+      "rubric": [
+        "Adds a heavyweight dependency with install, pinning, and upgrade overhead",
+        "Adds a small dependency with low upgrade churn",
+        "No new dependency; runs on any Python installation"
+      ]
+    }
+  ],
+  "hard_constraints": [],
+  "evidence_records": [
+    {
+      "id": "repo-files",
+      "fact": "The repository contains exactly README.md and process.py, with no dependency manifest such as pyproject.toml or requirements.txt.",
+      "source": "file listing of /tmp/tmp9qqqtbeg/dependency, 2026-10-02",
+      "checked_at": "2026-10-02T12:47:36+09:00",
+      "kind": "verified"
+    },
+    {
+      "id": "stdlib-streaming",
+      "fact": "process.py imports only the standard-library csv module, and summarize() consumes csv.reader through a generator expression, so parsing is lazy and memory use does not grow with input size.",
+      "source": "process.py:1-12",
+      "checked_at": "2026-10-02T12:47:36+09:00",
+      "kind": "verified"
+    },
+    {
+      "id": "file-size-unknown",
+      "fact": "Weekly CSV export sizes have never been measured and vary a lot between weeks.",
+      "source": "README.md:4-5",
+      "checked_at": "2026-10-02T12:47:36+09:00",
+      "kind": "verified"
+    },
+    {
+      "id": "pandas-read-csv-memory",
+      "fact": "pandas.read_csv reads the entire file into a single DataFrame by default; chunksize or iterator=True returns a TextFileReader for chunked iteration instead.",
+      "source": "https://pandas.pydata.org/docs/reference/api/pandas.read_csv.html",
+      "checked_at": "2026-10-02T12:47:36+09:00",
+      "kind": "verified"
+    }
+  ]
+}

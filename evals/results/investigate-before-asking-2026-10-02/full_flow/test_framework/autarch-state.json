@@ -1,0 +1,132 @@
+{
+  "goal": "Standardize pricing-service on a test framework for its Python test suite going forward, keeping the suite runnable in CI as the service evolves.",
+  "question": "Select the test framework that pricing-service should standardize on for its Python test suite going forward.",
+  "known_constraints": [
+    "The suite runs in GitHub Actions CI (ubuntu-latest) via an editable install of the dev extra followed by a single test command.",
+    "The project targets Python >= 3.10 (pyproject.toml requires-python)."
+  ],
+  "environment": {
+    "language": "python",
+    "python_requirement": ">=3.10",
+    "local_python": "3.14.7",
+    "ci": "GitHub Actions on ubuntu-latest",
+    "runtime_dependencies": [],
+    "dev_dependencies": ["pytest>=8"],
+    "test_modules": ["tests/test_pricing.py"]
+  },
+  "evidence": [
+    "pytest>=8 is the declared dev dependency (pyproject.toml, [project.optional-dependencies].dev)",
+    "the only test module imports pytest and uses @pytest.mark.parametrize (tests/test_pricing.py:1,6)",
+    "CI installs .[dev] and runs pytest (.github/workflows/ci.yml:8-9)",
+    "README states all tests run under pytest in CI and that the suite and onboarding docs assume pytest (README.md:3-4)",
+    "a repo-wide search found no references to unittest, nose, nose2, hypothesis, tox, or coverage (rg search, 2026-10-02)",
+    "runtime dependencies are empty; only dev tooling adds a dependency (pyproject.toml:5)",
+    "the suite consists of one module with one parametrized test covering tier_price (tests/test_pricing.py)",
+    "no external documentation was reachable in this session, so upstream release cadence and Python-version support of third-party options were not verified"
+  ],
+  "alternatives": [
+    {
+      "id": "pytest",
+      "name": "Keep pytest",
+      "description": "Continue using pytest>=8 as the test framework, with the existing test module, dev dependency, and CI invocation unchanged.",
+      "advantages": [
+        "The existing test module, CI job, and dev dependency already target pytest, so nothing needs to change",
+        "Supports parametrized tests, which the current suite uses",
+        "README and onboarding docs already describe the suite as pytest-based"
+      ],
+      "disadvantages": [
+        "Retains a third-party dev dependency that must be tracked for upgrades",
+        "Any future move away from pytest would still require rewriting the suite and CI"
+      ],
+      "assumptions": [
+        "Keeping a third-party dev dependency is acceptable to the team"
+      ]
+    },
+    {
+      "id": "stdlib-unittest",
+      "name": "Standard-library unittest",
+      "description": "Migrate the test module to Python's built-in unittest module and remove the pytest dev dependency.",
+      "advantages": [
+        "Requires no third-party test dependency because unittest ships with Python",
+        "Runs with the standard-library unittest runner, so CI needs only the project install",
+        "Standard-library API is stable across supported Python versions"
+      ],
+      "disadvantages": [
+        "The existing pytest-style test must be rewritten (for example replacing @pytest.mark.parametrize with subTest)",
+        "The CI command, dev extra, and the README's pytest assumptions would all need updating",
+        "Assertions and test organization are more verbose than the current suite"
+      ],
+      "assumptions": [
+        "Removing the third-party dev dependency is worth the migration effort"
+      ]
+    },
+    {
+      "id": "nose2",
+      "name": "nose2",
+      "description": "Adopt nose2, a unittest-compatible test runner with a plugin architecture, and rewrite the test module for it.",
+      "advantages": [
+        "Builds on unittest-style tests while adding plugin-based features",
+        "Offers plugin integration such as coverage reporting"
+      ],
+      "disadvantages": [
+        "Adds a third-party dependency whose release cadence is not documented in this repository",
+        "The existing pytest-style test must be rewritten and CI and docs updated",
+        "Provides no capability the current suite's single parametrized test requires"
+      ],
+      "assumptions": [
+        "nose2 remains installable and compatible with the project's supported Python versions (not verified in this session)"
+      ]
+    }
+  ],
+  "criteria": [
+    {
+      "id": "requirement_fit",
+      "name": "Fit for the service's testing needs",
+      "weight": 1.0,
+      "rubric": [
+        "Cannot express the existing parametrized unit tests without heavy workarounds",
+        "Can express them but with significant boilerplate",
+        "Adequately supports the current unit tests",
+        "Supports the current tests ergonomically, including parameterization",
+        "Supports current and foreseeable testing needs ergonomically"
+      ]
+    },
+    {
+      "id": "migration_and_continuity_cost",
+      "name": "Migration and continuity cost",
+      "weight": 1.0,
+      "rubric": [
+        "Requires rewriting all tests plus CI, dependency, and documentation changes",
+        "Requires rewriting all tests with CI and dependency changes",
+        "Requires moderate adjustments to tests, CI, or docs",
+        "Requires minor config-level adjustments only",
+        "No migration needed; existing tests, CI, and docs continue unchanged"
+      ]
+    },
+    {
+      "id": "upstream_health",
+      "name": "Upstream maintenance and ecosystem health",
+      "weight": 1.0,
+      "rubric": [
+        "Upstream is archived or unmaintained",
+        "Upstream is in maintenance mode with infrequent releases",
+        "Upstream is stable with occasional releases",
+        "Upstream is actively maintained with regular releases",
+        "Upstream is very actively maintained, widely adopted, with a large plugin ecosystem"
+      ]
+    },
+    {
+      "id": "dependency_footprint",
+      "name": "Dependency footprint",
+      "weight": 1.0,
+      "rubric": [
+        "Adds multiple new third-party dependencies",
+        "Adds one new third-party dependency",
+        "Keeps the current third-party dependency count",
+        "Removes one third-party dependency",
+        "Uses only the standard library"
+      ]
+    }
+  ],
+  "hard_constraints": []
+}

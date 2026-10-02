@@ -239,14 +239,9 @@ docs/                           # requirements & design docs (Japanese)
 
 ## Implementation and validation status
 
-As of 2026-10-02, the implementation includes mandatory-requirement preflight checks, one shared investigation/repair round, captured-signal replay, and threshold calibration with separate training and held-out cases.
-The offline suite passed 638 tests; three live API tests were skipped. The independent constraint evaluation passed all 21 sequences.
-After network recovery, the authentication full-flow returned the expected `ASK_USER` and passed all four checks: coverage, forbidden-option avoidance, decision correctness, and state validity.
+As of 2026-10-02, the decision gate fires on evidence sufficiency alone, `blocker_class` routes missing facts toward one investigation round and unknown preferences or balanced ties toward a deciding question, and `blocker_confidence` only scopes the investigation (below 0.50 it falls back to investigation). Jev question wordings state the investigable-versus-intent axis. Mandatory-requirement preflight checks, captured-signal replay, and threshold calibration with separate training and held-out cases are retained, and the default thresholds are unchanged.
 
-**Default thresholds remain unchanged.** The training-selected policy failed held-out validation: three of 30 runs auto-selected despite missing evidence, so the policy was rejected.
-The final legacy fixed-state evaluation still had 8 unsafe auto-selections out of 69, compared with 7/69 after the first extension.
-Deterministic constraint filtering and the agent's ability to gather sufficient evidence are evaluated separately.
-Live investigation of unknown requirements and whether cited facts actually establish an assessment remain open quality concerns.
+In the live rerun under this implementation, unsafe auto-selections in the 23 fixed-state cases fell from 8/69 to 0/69, appropriate asks rose from 22/30 to 30/30, and all three two-phase loops passed (9/9, from 3/9 — the deployment loop was measured on a reworked case). The independent constraint track stayed at 21/21. All five full-flow scenarios completed; four met expectations, and the database scenario newly failed: the agent's state was structurally valid, but Jev asked a deciding question where a selection was expected, the cost of gating on sufficiency alone. Missing-evidence detection after evidence removal (0/6) is unchanged, because the reported sufficiency stays at 0.81–0.82, above the 0.60 gate. One rerun per scenario is a small sample, and the agent-initiated investigate-then-rerun path did not occur in any of the five full-flow runs.
 
 Evaluation code lives in `evals/`: `run_fixed_state.py` covers fixed states and investigation loops,
 `run_constraint_cases.py` covers mandatory requirements, and `run_full_flow.py` exercises the skill end to end.
@@ -256,6 +251,7 @@ Live runners need network access and an API key and record engine decisions in t
 Use each script's `--help` for its arguments.
 
 - [Current state and remaining issues (Japanese)](STATE.md)
+- [Live rerun under the new gate structure (Japanese)](evals/results/investigate-before-asking-2026-10-02/notes.md)
 - [Final evaluation and limitations (Japanese)](evals/results/hard-constraints-calibration-2026-10-01/final/notes.md)
 - [Calibration results and rejection rationale (Japanese)](evals/results/hard-constraints-calibration-2026-10-01/notes.md)
 - [Authentication recheck after network recovery (Japanese)](evals/results/hard-constraints-calibration-2026-10-01/auth-live-recheck-2026-10-02/notes.md)
