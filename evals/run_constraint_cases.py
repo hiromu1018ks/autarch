@@ -40,8 +40,6 @@ def main(argv=None) -> int:
                           ("blocker-confidence", 0.50)):
         parser.add_argument(f"--{name}", type=constraint_cases.decide._threshold_argument,
                             default=default)
-    parser.add_argument("--gate-order", choices=("human_first", "evidence_first"),
-                        default="human_first")
     parser.add_argument("--capture-evaluation", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
@@ -86,7 +84,7 @@ def main(argv=None) -> int:
     environment = {
         "runner": "run_constraint_cases.py", "case_kind": "constraints",
         "cases": [c["id"] for c in cases], "model": args.model,
-        "gate_order": args.gate_order, "capture_evaluation": args.capture_evaluation,
+        "capture_evaluation": args.capture_evaluation,
         "thresholds": {name: getattr(args, name) for name in (
             "auto_select", "review", "min_gap", "human_preference", "sufficiency", "blocker_confidence")},
         "decide_script": str(args.decide_script), "runs_per_case": args.runs,

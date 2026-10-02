@@ -264,7 +264,7 @@ def test_runner_reuses_retry_and_generates_two_phase_states(tmp_path, monkeypatc
     monkeypatch.setattr(runner.run_fixed_state, "run_with_retry", spy)
     out = tmp_path / "out"
     assert runner.main(["--cases-dir", str(cases_dir), "--out-dir", str(out), "--runs", "2",
-        "--interval", "0", "--gate-order", "evidence_first", "--model", "test-model",
+        "--interval", "0", "--model", "test-model",
         "--auto-select", "0.9", "--review", "0.61", "--min-gap", "0.16",
         "--human-preference", "0.71", "--sufficiency", "0.8",
         "--blocker-confidence", "0.7", "--capture-evaluation"]) == 0
@@ -272,7 +272,6 @@ def test_runner_reuses_retry_and_generates_two_phase_states(tmp_path, monkeypatc
     assert "revision" not in seen[0][0]
     assert seen[1][0] == api.constraint_phase2_state(case)
     assert seen[0][2]["capture_evaluation"] is True
-    assert seen[0][2]["gate_order"] == "evidence_first"
     assert seen[0][2]["model"] == "test-model"
     records = [json.loads(line) for line in (out / "constraint_runs.jsonl").read_text().splitlines()]
     assert all(r["case_kind"] == "constraints" for r in records)
@@ -281,7 +280,7 @@ def test_runner_reuses_retry_and_generates_two_phase_states(tmp_path, monkeypatc
     summary = json.loads((out / "constraint_summary.json").read_text())
     assert summary["counts"] == {"pass": 2, "fail": 0, "unavailable": 0, "incomplete": 0}
     env = json.loads((out / "environment.json").read_text())
-    assert env["gate_order"] == "evidence_first" and env["capture_evaluation"] is True
+    assert env["capture_evaluation"] is True
     assert env["thresholds"] == {"auto_select": 0.9, "review": 0.61, "min_gap": 0.16,
         "human_preference": 0.71, "sufficiency": 0.8, "blocker_confidence": 0.7}
 
