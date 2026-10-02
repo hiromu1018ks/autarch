@@ -6,7 +6,7 @@
 
 Autarch は、[Claude Code](https://claude.com/claude-code) 用の意思決定スキルです。エージェントが判断に迷ったときに候補を比べ、作業を先へ進める手助けをします。
 
-`/autarch` を実行すると、エージェントが候補と評価基準を整理します。評価には [TypeSafe AI](https://typesafe.ai/) の System One モデル Jev を使います。結果を受け取ったエンジンは、決められたルールに従って案を選ぶか、あなたにしか決められない点を質問します。
+`/autarch` を実行すると、エージェントが候補と評価基準を整理します。評価には [TypeSafe AI](https://typesafe.ai/) の System One モデル Jev を使います。エンジンは、必須条件を確認してから候補を評価し、案を選ぶか、追加調査やあなたへの質問に進みます。
 
 ```text
 エージェント: 「DBはPostgreSQLとSQLiteのどちらにしますか？」
@@ -16,17 +16,39 @@ Autarch:      SQLite を選択。ローカルの単一ユーザー用途なら
 エージェント: 「了解しました。SQLiteで作業を続けます。」
 ```
 
+## 使い方
+
+インストール後は、判断を任せたい場面で `/autarch` と入力します。質問を直接指定することもできます。
+
+```text
+/autarch PDF処理の方法を選んで。外部へのデータ送信は禁止。速度は重視したい。
+```
+
+JSON を自分で書く必要はありません。エージェントが「外部送信禁止」を必須条件、「速度」を評価基準として整理します。
+
+| 状況 | Autarch の動き |
+|---|---|
+| 必須条件に違反する候補がある | その候補を採点前に除外する |
+| 必須条件を満たすか未確認 | 比較を止め、一度調べてから判断し直す |
+| 根拠が不足していると判定された | 不足する事実を調べるか、偏った説明を修正する。再実行は合わせて1回まで |
+| あなたの好みや計画が必要 | 判断に必要な質問を1つ返す |
+| 条件・評価・確信度が選択基準を満たす | 案を選び、元の作業を続ける |
+
+条件確認・根拠の調査・説明の修正に使える再実行の枠は、合わせて1回です。
+必須条件があるときは、その条件を伝えてください。調査しても分からないことは未確認のまま残し、条件を勝手に緩めません。
+詳しい導入手順は [インストール](#インストール) を参照してください。
+
 ## 仕組み
 
 候補を作る役、候補を評価する役、最終結果を決める役を分けています。
 
 | 役割 | 担当すること |
 |---|---|
-| エージェント | 未解決の質問を特定し、中立な候補を2〜5案作る。根拠を集め、評価基準を定める |
-| Jev | 人の好みが判断に必要か、どの案が目的に合うか、各評価基準で各案がどの程度合うかを評価する |
-| `decide.py` | 入力を検証し、送信前に秘密情報を伏せ、APIを呼び出す。結果に判定ルールを適用し、判断を記録する |
+| エージェント | 未解決の質問を特定し、中立な候補を2〜5案作る。必須条件と希望を分け、出典付きの根拠を集める。必要に応じて一度調べ直す |
+| Jev | 人の意向、根拠の充足度、判断を妨げる要因、候補間の確率、評価基準ごとの点数を評価する |
+| `decide.py` | 入力と必須条件を検証し、違反候補を除外する。秘密情報を伏せ、適格候補を API に送り、判定ルールを適用して結果を記録する |
 
-Jev は3種類の質問に答えます。Noul は人の好みや意向が必要か、Choice はどの候補がよいか、Score は各候補が評価基準をどの程度満たすかを判定します。
+Jev には、人の意向と根拠の充足度を確率で答える Noul を2問、候補と阻害要因を選ぶ Choice を2問、各評価基準×候補の Score を送ります。Score は基準の段階評価に沿った点数です。
 
 判断エンジンは、Python の標準ライブラリだけで動く単一スクリプトです。追加パッケージは必要ありません。しきい値の判定、入力確認、秘密情報のマスキング、ログ記録はコードで行います。
 
@@ -43,7 +65,7 @@ Jev に送る質問・候補・根拠・評価基準は、評価の一貫性を�
 5. **上位候補に差があるか**: 1位と2位の確率差が `0.15` 未満なら `ASK_USER`。
 6. **確信度は十分か**: 確信度が `0.85` 以上なら `SELECT_OPTION`、`0.60` 以上なら `SELECT_OPTION_WITH_CAUTION`、それ未満なら `ASK_USER`。
 
-`ASK_USER` になると、Autarch は最初の技術的な質問をそのまま繰り返しません。判断を分ける要素に絞り、あなたにしか答えられない質問を返します。
+`ASK_USER` の理由が事実不足や判断材料の偏りなら、エージェントは一度調査・修正して再実行します。人の意向が必要な場合や、その1回を使っても解決できない場合は、最初の技術的な質問を繰り返さず、判断を分ける点に絞って質問します。
 
 Choice の `probabilities` は候補間の確率分布で、点数ではありません。複数の評価基準に基づく集計結果は `score_summary` に含まれます。
 
@@ -171,19 +193,22 @@ Autarch が動くのは、あなたが `/autarch` を明示的に実行したと
 
 ## エンジンを直接実行する
 
-スキルは `scripts/decide.py` を呼び出します。このスクリプトは単独でも実行できます。
+スキルは `scripts/decide.py` を呼び出します。このスクリプトは単独でも実行できます。通常のスキル利用では、エージェントが入力 JSON を作成します。
 
 ```bash
-python3 skills/autarch/scripts/decide.py --state-file state.json \
-  [--model jev-latest] [--auto-select 0.85] [--review 0.60] \
-  [--min-gap 0.15] [--human-preference 0.70] \
-  [--sufficiency 0.60] [--blocker-confidence 0.50] \
-  [--timeout 30] [--endpoint https://api.typesafe.ai]
+python3 skills/autarch/scripts/decide.py --state-file state.json
 ```
+
+既定値は `--model jev-latest`、`--auto-select 0.85`、`--review 0.60`、
+`--min-gap 0.15`、`--human-preference 0.70`、`--sufficiency 0.60`、
+`--blocker-confidence 0.50`、`--timeout 30`、`--endpoint https://api.typesafe.ai` です。
+`--gate-order` は既定の `human_first` と、根拠の充足度を先に見る `evidence_first` を指定できます。
+`--capture-evaluation` を付けると、丸め前の数値を `evaluation_snapshot` に出力し、同じ入力と保存値で閾値を比較できます。
+どちらも評価・比較用のオプションで、通常の `/autarch` に指定する必要はありません。
 
 - **入力**: 判断内容を記した JSON ファイル。`goal`、`question`、2〜5件の `alternatives` が必要です。`criteria` は省略でき、指定する場合は0〜8件です。
 - **標準出力**: 判定結果を表す JSON オブジェクトを1つ出力します。`decision`、`rule`、`selected_option`、`confidence`、`probabilities`、`score_summary` などが含まれます。
-- **終了コード**: `0` は判定結果を出力（`PROVIDER_UNAVAILABLE` や `INSUFFICIENT_OPTIONS` を含む）、`2` は引数・ファイル読み込み・JSON 構文のエラー、`1` は内部エラーです。
+- **終了コード**: `0` は判定結果を出力（`PROVIDER_UNAVAILABLE`、`INSUFFICIENT_OPTIONS`、入力検証で返る `ASK_USER` を含む）、`2` は引数・ファイル読み込み・JSON 構文のエラー、`1` は内部エラーです。
 
 入力 JSON の完全なスキーマと実行手順は [スキルの説明](skills/autarch/SKILL.md) を参照してください。
 
@@ -192,6 +217,7 @@ python3 skills/autarch/scripts/decide.py --state-file state.json \
 - エージェントには、`.env` ファイル、認証情報、秘密鍵、シークレットストアを根拠として読まないよう指示しています。
 - API へ送信する前に、エンジンが秘密情報を伏せます。対象は `password`、`token`、`api_key` などのキーと、`sk-...`、`ghp_...`、AWS キー、`Bearer ...`、秘密鍵ブロックなどの文字列パターンです。置き換え件数だけを報告します。
 - 判断ログ `~/.autarch/decisions.jsonl` には、記録時刻、質問の要約、候補と評価基準の ID、確率や評価結果などの数値、判定結果、モデル名、処理時間を記録します。質問の要約は秘密情報を伏せ、500文字までにします。入力全体やシークレット値は記録しません。候補と評価基準の ID はそのまま記録されるため、秘密情報を含めないでください。
+- `--capture-evaluation` の保存対象は検証済みの数値・既知の ID・分類です。API 応答の自由文や追加 metadata は保存しません。保存した評価記録にも秘密情報を入れないでください。
 - エラーメッセージに秘密の値は含まれません。
 
 ## 開発
@@ -216,15 +242,41 @@ AUTARCH_LIVE=1 .venv/bin/python3 -m pytest tests/test_live.py -v
 ```text
 skills/autarch/SKILL.md                 # エージェント向けのスキル説明
 skills/autarch/scripts/decide.py        # 標準ライブラリだけで動く判断エンジン
-tests/                                  # pytest テスト（ネットワーク不要）と実 API テスト
-docs/                                   # 要件定義書と設計資料
+tests/                                # pytest テスト（ネットワーク不要）と実 API テスト
+evals/                                # 固定入力、追加調査、必須条件、full-flow、閾値比較の評価
+docs/                                 # 要件定義書と設計資料
 ```
+
+## 実装と検証の状況
+
+2026-10-02 時点で、必須条件の事前検査、根拠不足時の一度だけの追加調査、評価値の保存・再生、学習用と検証用を分けた閾値比較を実装済みです。
+通常のテストは638件成功、実 API 用の3件はスキップ。必須条件の独立評価は21/21組で成功しました。
+ネットワーク復旧後の認証 full-flow は期待どおり `ASK_USER` となり、候補の網羅性・禁止候補の回避・判断結果・入力の妥当性の4項目に合格しました。
+
+**閾値の既定値は変更していません。** 学習用で選んだ候補を別の30件で検証したところ、根拠不足の3件を誤って自動選択したため、不採用としました。
+既存の固定入力評価では誤自動選択が8/69件残り、最初の拡張時の7/69件より1件増えています。
+構造化条件の除外処理が動くことと、モデルが十分な根拠を集めて正しく判断することは別に検証しています。
+実際のエージェントによる未確認条件の調査経路や、根拠が条件を本当に証明するかの確認は、引き続き課題です。
+
+評価コードは `evals/` にあります。固定入力と追加調査は `run_fixed_state.py`、
+必須条件は `run_constraint_cases.py`、スキル全体は `run_full_flow.py` で評価します。
+`calibrate_thresholds.py` の `describe` / `search` / `validate` は保存した評価値を使い、API を呼ばずに比較します。
+学習用で設定を1つ選び、事前に固定した別ケースで検証し、検証結果を見た再選択はしません。
+実測の評価 runner は API を利用し、通常の判断ログにも記録するため、ネットワークと API キーが必要です。
+full-flow には Claude Code も必要です。実行するオプションは各スクリプトの `--help` で確認できます。
+
+- [現在の実装状況と残る課題](STATE.md)
+- [最終評価と留保](evals/results/hard-constraints-calibration-2026-10-01/final/notes.md)
+- [閾値比較と不採用理由](evals/results/hard-constraints-calibration-2026-10-01/notes.md)
+- [接続復旧後の認証再評価](evals/results/hard-constraints-calibration-2026-10-01/auth-live-recheck-2026-10-02/notes.md)
 
 ## 関連ドキュメント
 
 - [要件定義書](docs/Autarch_requirements_v0.2.md): プロダクト要件、KPI、ロードマップ
 - [実装設計書](docs/superpowers/specs/2026-09-30-autarch-skill-implementation-design.md): 入力形式、API 契約、判定ポリシー
 - [実装計画](docs/superpowers/plans/2026-09-30-autarch-skill.md): 実装を進めた11タスクの TDD 計画
+- [根拠不足と追加調査の設計](docs/superpowers/specs/2026-10-01-info-gap-investigation-design.md): 一度だけの調査と問い直し
+- [必須条件と閾値比較の設計](docs/superpowers/specs/2026-10-01-hard-constraints-calibration-design.md): 根拠付き条件、採点前の除外、独立した閾値検証
 
 ## ライセンス
 
