@@ -7,7 +7,10 @@
     "question": "Where should the documentation site be hosted?",
     "known_constraints": ["must stay within free hosting tiers"],
     "environment": {},
-    "evidence": ["the content is written as markdown sources"],
+    "evidence": [
+      "the content is written as markdown sources",
+      "the site is currently built by a legacy pipeline whose output format is not recorded in the repository"
+    ],
     "alternatives": [
       {
         "id": "static_host",
@@ -51,8 +54,8 @@
   },
   "investigation": {
     "injected_evidence": [
-      "the site generator outputs static HTML",
-      "no dynamic endpoints exist"
+      "the legacy pipeline outputs static HTML files",
+      "no dynamic endpoints or server-side rendering exist"
     ],
     "phase1": {"rule": "evidence_insufficient", "blocker_class": "facts_missing"},
     "phase2": {
